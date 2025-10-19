@@ -331,6 +331,13 @@ func boolPointer(value types.Bool) *bool {
 	return &v
 }
 
+func attrStringValue(value types.String) string {
+	if value.IsNull() || value.IsUnknown() {
+		return ""
+	}
+	return value.ValueString()
+}
+
 func stringSliceToList(values []string) types.List {
 	if len(values) == 0 {
 		return types.ListNull(types.StringType)

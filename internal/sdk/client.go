@@ -22,6 +22,8 @@ type Config struct {
 	UserAgent string
 
 	HTTPClient *http.Client
+	MaxRetries int
+	RetryDelay time.Duration
 }
 
 // Client is a thin wrapper around http.Client that ensures each request targets
@@ -31,6 +33,8 @@ type Client struct {
 	baseURL    *url.URL
 	apiKey     string
 	userAgent  string
+	maxRetries int
+	retryDelay time.Duration
 }
 
 // NewClient validates the configuration and instantiates a new Client.
@@ -83,11 +87,26 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		userAgent = "terraform-provider-forward/dev"
 	}
 
+	maxRetries := cfg.MaxRetries
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
+	if maxRetries == 0 {
+		maxRetries = 3
+	}
+
+	retryDelay := cfg.RetryDelay
+	if retryDelay <= 0 {
+		retryDelay = 500 * time.Millisecond
+	}
+
 	client := &Client{
 		httpClient: httpClient,
 		baseURL:    parsed,
 		apiKey:     cfg.APIKey,
 		userAgent:  userAgent,
+		maxRetries: maxRetries,
+		retryDelay: retryDelay,
 	}
 
 	return client, nil
@@ -127,5 +146,53 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		return nil, errors.New("client is nil")
 	}
 
-	return c.httpClient.Do(req)
+	attempt := 0
+	var lastErr error
+
+	for {
+		if attempt > 0 && req.Body != nil && req.GetBody != nil {
+			rc, err := req.GetBody()
+			if err != nil {
+				return nil, fmt.Errorf("reset request body: %w", err)
+			}
+			req.Body = rc
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err == nil && !shouldRetryStatus(resp.StatusCode) {
+			return resp, nil
+		}
+
+		if err != nil {
+			lastErr = err
+		} else {
+			// Consume and close before retrying.
+			io.Copy(io.Discard, resp.Body) // best effort
+			resp.Body.Close()
+			lastErr = fmt.Errorf("received status %d", resp.StatusCode)
+		}
+
+		if attempt >= c.maxRetries {
+			return nil, lastErr
+		}
+
+		attempt++
+		backoff := c.retryDelay * time.Duration(1<<uint(attempt-1))
+
+		select {
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		case <-time.After(backoff):
+		}
+	}
+}
+
+func shouldRetryStatus(status int) bool {
+	if status == http.StatusTooManyRequests {
+		return true
+	}
+	if status >= 500 && status != http.StatusNotImplemented {
+		return true
+	}
+	return false
 }

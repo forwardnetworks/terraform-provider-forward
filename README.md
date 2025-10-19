@@ -9,6 +9,7 @@ The initial pass wires up provider configuration, documentation, and a reusable 
 - ✅ Provider scaffold replaced with Forward-specific configuration, environment-variable support, and HTTP client.
 - ✅ Data sources implemented: platform version, network snapshots, intent checks (pass/fail summaries), and generic NQE query runner.
 - ✅ Generated documentation and runnable examples kept in sync via `make generate`.
+- ✅ Resources implemented: snapshot-bound intent checks and NQE library references.
 - 🚧 Next targets: expand the SDK for pagination/error handling, add managed resources (snapshot lifecycle, intent checks), and formalize release automation.
 
 ## Quick Start
