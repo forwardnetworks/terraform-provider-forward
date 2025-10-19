@@ -115,6 +115,11 @@ go install ./...
 - `forward_nqe_query_definition` — references NQE library entries for intent and query metadata.
 ## Available Data Sources
 
+## Examples
+
+- [Pre/Post Change Validation](examples/pre-post) – illustrates running intent checks and NQE queries with Terraform pre/post conditions.
+
+
 - `forward_version` — exposes deployment build, release, and version metadata. [`internal/provider/version_data_source.go`](internal/provider/version_data_source.go)
 - `forward_snapshots` — lists snapshots for the configured network with optional filters. [`internal/provider/snapshots_data_source.go`](internal/provider/snapshots_data_source.go)
 - `forward_intent_checks` — reports intent check Pass/Fail status for a snapshot, with filterable counts. [`internal/provider/intent_checks_data_source.go`](internal/provider/intent_checks_data_source.go)
