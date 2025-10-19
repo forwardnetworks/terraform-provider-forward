@@ -1,6 +1,6 @@
 # Terraform Provider Forward Enterprise
 
-This repository contains the Terraform provider for [Forward Networks](https://www.forwardnetworks.com). The provider is built with the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework) and uses the Forward Networks OpenAPI specification (`forward-api.json`) as the authoritative contract for future resources and data sources.
+This repository contains the Terraform provider for [Forward Networks](https://www.forwardnetworks.com). The provider is built with the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework) and references the Forward Networks OpenAPI specification available at `https://fwd.app/api/spec/complete.json` (requires authentication using a Forward API key) as the authoritative contract for future resources and data sources.
 
 The initial pass wires up provider configuration, documentation, and a reusable API client so we can incrementally expose Forward Networks objects as Terraform resources.
 
@@ -30,9 +30,9 @@ variable "forward_api_key" {
 }
 
 variable "forward_base_url" {
-  description = "Forward Networks API base URL 
+  description = "Forward Networks API base URL (for example, https://demo.forwardnetworks.com)."
   type        = string
-  default     = "https://fwd.app"
+  default     = "https://demo.forwardnetworks.com"
 }
 
 variable "forward_network_id" {
@@ -97,7 +97,7 @@ go install ./...
    Finalize authentication flows (token exchange, secondary headers) and extend the SDK helper in `internal/sdk` for common request handling (pagination, error wrapping, retries).
 
 2. **Core Resources**  
-   Prioritize snapshot lifecycle, intent checks, and path analyses based on the Forward API (`forward-api.json`). Implement CRUD operations plus acceptance tests for each.
+   Prioritize snapshot lifecycle, intent checks, and path analyses based on the Forward API specification. Implement CRUD operations plus acceptance tests for each.
 
 3. **Data Sources**  
    Surface read-only lookups such as inventory, intents, and compliance summaries to enable composable Terraform plans.
