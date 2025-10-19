@@ -108,6 +108,11 @@ go install ./...
 5. **Release Engineering**  
    Integrate with `goreleaser`, populate `CHANGELOG.md`, and prepare the Terraform Registry publishing metadata once the first stable resource set lands.
 
+
+## Available Resources
+
+- `forward_intent_check` — manages intent checks tied to a snapshot.
+- `forward_nqe_query_definition` — references NQE library entries for intent and query metadata.
 ## Available Data Sources
 
 - `forward_version` — exposes deployment build, release, and version metadata. [`internal/provider/version_data_source.go`](internal/provider/version_data_source.go)

@@ -188,7 +188,10 @@ func (p *ForwardProvider) Configure(ctx context.Context, req provider.ConfigureR
 }
 
 func (p *ForwardProvider) Resources(ctx context.Context) []func() resource.Resource {
-	return nil
+	return []func() resource.Resource{
+		NewIntentCheckResource,
+		NewNQEQueryResource,
+	}
 }
 
 func (p *ForwardProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
