@@ -1,13 +1,6 @@
+version: 2
+
 project_name: terraform-provider-forward
-
-goos:
-  - linux
-  - darwin
-  - windows
-
-goarch:
-  - amd64
-  - arm64
 
 env:
   - CGO_ENABLED=0
@@ -31,7 +24,6 @@ builds:
     ignore:
       - goos: windows
         goarch: arm64
-    mod: vendor
 
 archives:
   - id: provider-archive
@@ -49,9 +41,10 @@ checksum:
 release:
   prerelease: auto
   draft: false
-  changelog:
-    use: changelog
-    sort: asc
+
+changelog:
+  use: changelog
+  sort: asc
 
 signs:
   - artifacts: checksum
