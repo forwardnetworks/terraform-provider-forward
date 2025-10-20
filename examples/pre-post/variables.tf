@@ -1,3 +1,8 @@
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
+
+# Copyright (c) HashiCorp, Inc.
+
 variable "forward_api_key" {
   description = "Forward Networks API key (use TF_VAR_forward_api_key or FORWARD_API_KEY)."
   type        = string

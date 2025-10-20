@@ -191,6 +191,7 @@ func (p *ForwardProvider) Resources(ctx context.Context) []func() resource.Resou
 	return []func() resource.Resource{
 		NewIntentCheckResource,
 		NewNQEQueryResource,
+		NewSnapshotResource,
 	}
 }
 
@@ -200,6 +201,7 @@ func (p *ForwardProvider) DataSources(ctx context.Context) []func() datasource.D
 		NewSnapshotsDataSource,
 		NewIntentChecksDataSource,
 		NewNqeQueryDataSource,
+		NewPathAnalysisDataSource,
 	}
 }
 
