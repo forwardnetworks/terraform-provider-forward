@@ -147,3 +147,11 @@ go install ./...
 - `forward_intent_checks` — reports intent check Pass/Fail status for a snapshot, with filterable counts. [`internal/provider/intent_checks_data_source.go`](internal/provider/intent_checks_data_source.go)
 - `forward_nqe_query` — executes NQE queries and returns JSON-formatted results. [`internal/provider/nqe_query_data_source.go`](internal/provider/nqe_query_data_source.go)
 - `forward_path_analysis` — executes path analysis queries and returns hop-level outcomes. [`internal/provider/path_analysis_data_source.go`](internal/provider/path_analysis_data_source.go)
+
+## Release
+
+1. Update `CHANGELOG.md` with the new version notes.
+2. Run `goreleaser release --snapshot --skip-publish` to verify artifacts locally.
+3. Tag the release (`git tag v0.1.0 && git push --tags`).
+4. Run `goreleaser release` with appropriate credentials to publish binaries and checksums.
+5. Publish the release to the Terraform Registry once the GitHub release is live.

@@ -1,0 +1,58 @@
+project_name: terraform-provider-forward
+
+goos:
+  - linux
+  - darwin
+  - windows
+
+goarch:
+  - amd64
+  - arm64
+
+env:
+  - CGO_ENABLED=0
+
+before:
+  hooks:
+    - go mod tidy
+
+dist: dist
+
+builds:
+  - id: provider
+    main: .
+    binary: terraform-provider-forward
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    flags:
+      - -trimpath
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    mod: vendor
+
+archives:
+  - id: provider-archive
+    builds:
+      - provider
+    format: zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
+  algorithm: sha256
+
+release:
+  prerelease: auto
+  draft: false
+  changelog:
+    use: changelog
+    sort: asc
+
+signs:
+  - artifacts: checksum
+    args: ["sign", "--armor", "--detach-sign", "${artifact}"]
