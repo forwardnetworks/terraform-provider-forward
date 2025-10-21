@@ -31,9 +31,9 @@ variable "forward_api_key" {
 }
 
 variable "forward_base_url" {
-  description = "Forward Networks API base URL (for example, https://demo.forwardnetworks.com)."
+  description = "Forward Networks API base URL (for example, https://fwd.app)."
   type        = string
-  default     = "https://demo.forwardnetworks.com"
+  default     = "https://fwd.app"
 }
 
 variable "forward_network_id" {
@@ -61,7 +61,7 @@ Example environment variable exports:
 
 ```shell
 export FORWARD_API_KEY=xxxxxxxxxxxxxxxx
-export TF_VAR_forward_base_url=https://demo.forwardnetworks.com
+export TF_VAR_forward_base_url=https://fwd.app
 export TF_VAR_forward_network_id=123456
 export TF_VAR_forward_insecure=false
 ```

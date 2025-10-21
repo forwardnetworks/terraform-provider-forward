@@ -12,7 +12,7 @@ variable "forward_api_key" {
 variable "forward_base_url" {
   description = "Forward Networks API base URL."
   type        = string
-  default     = "https://demo.forwardnetworks.com"
+  default     = "https://fwd.app"
 }
 
 variable "forward_network_id" {

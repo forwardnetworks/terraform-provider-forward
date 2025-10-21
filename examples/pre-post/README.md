@@ -21,7 +21,7 @@ Populate the following environment variables (or provide values via
 ```shell
 export TF_VAR_forward_api_key="..."
 export TF_VAR_forward_network_id="..."
-export TF_VAR_forward_base_url="https://demo.forwardnetworks.com"
+export TF_VAR_forward_base_url="https://fwd.app"
 export TF_VAR_baseline_snapshot_id="..."
 export TF_VAR_verification_snapshot_id="..."
 export TF_VAR_intent_check_definition="$(cat intent_check.json)"
