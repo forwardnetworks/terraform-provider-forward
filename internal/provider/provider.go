@@ -62,7 +62,7 @@ func (p *ForwardProvider) Schema(ctx context.Context, req provider.SchemaRequest
 		MarkdownDescription: "Use the Forward Enterprise provider to interact with the Forward Networks platform APIs.",
 		Attributes: map[string]schema.Attribute{
 			"base_url": schema.StringAttribute{
-				MarkdownDescription: "Base URL for the Forward Networks API, for example `https://demo.forwardnetworks.com`.",
+				MarkdownDescription: "Base URL for the Forward Networks API, for example `https://fwd.app`.",
 				Required:            true,
 				Validators: []schemavalidator.String{
 					stringvalidator.LengthAtLeast(1),

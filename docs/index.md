@@ -51,7 +51,7 @@ provider "forward" {
 ### Required
 
 - `api_key` (String, Sensitive) API key used to authenticate requests. Marked sensitive and typically sourced from the `FORWARD_API_KEY` environment variable.
-- `base_url` (String) Base URL for the Forward Networks API, for example `https://demo.forwardnetworks.com`.
+- `base_url` (String) Base URL for the Forward Networks API, for example `https://fwd.app`.
 - `network_id` (String) Default Forward Enterprise Network ID used by resources and data sources when an explicit network is not provided.
 
 ### Optional
