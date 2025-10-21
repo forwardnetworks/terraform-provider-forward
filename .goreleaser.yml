@@ -43,7 +43,7 @@ release:
   draft: false
 
 changelog:
-  use: changelog
+  use: github
   sort: asc
 
 signs:
