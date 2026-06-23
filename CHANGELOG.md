@@ -1,3 +1,9 @@
+## 0.5.1
+
+IMPROVEMENTS:
+- `forward_aws_cloud_account` now adopts an existing Forward AWS setup with the same name and patches it during first apply, matching the update behavior used by later Terraform runs.
+- Added `allow_account_removals`, defaulting to `false`, so Terraform refuses to remove AWS account entries from an existing Forward setup unless the operator explicitly confirms the removal.
+
 ## 0.5.0
 
 FEATURES:

@@ -121,6 +121,8 @@ The AWS credentials used by Terraform need read-only Organizations permissions:
 
 `forward_aws_organization_accounts` fails if these calls do not succeed. That is intentional: a partial AWS account list could cause a Forward update that drops accounts from collection.
 
+If a Forward AWS setup with the same name already exists, `forward_aws_cloud_account` patches that setup instead of creating a duplicate. By default it refuses to remove existing AWS account entries from a setup; set `allow_account_removals = true` only after reviewing a Terraform plan where those removals are intentional.
+
 The Forward resource defaults `delete_on_destroy` to `false`. Destroying the Terraform resource removes it from state but does not delete the Forward cloud setup unless `delete_on_destroy = true` is explicitly set.
 
 See [guides/aws-organization-onboarding.md](guides/aws-organization-onboarding.md) for the full workflow and [examples/aws-organization-onboarding](examples/aws-organization-onboarding) for a runnable configuration.
