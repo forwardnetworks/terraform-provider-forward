@@ -17,7 +17,8 @@ import (
 // Config captures the inputs required to construct a Forward Networks API client.
 type Config struct {
 	BaseURL   string
-	APIKey    string
+	Username  string
+	Password  string
 	Insecure  bool
 	UserAgent string
 
@@ -31,7 +32,8 @@ type Config struct {
 type Client struct {
 	httpClient *http.Client
 	baseURL    *url.URL
-	apiKey     string
+	username   string
+	password   string
 	userAgent  string
 	maxRetries int
 	retryDelay time.Duration
@@ -55,8 +57,8 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 
 	parsed.Path = strings.TrimSuffix(parsed.Path, "/")
 
-	if cfg.APIKey == "" {
-		return nil, errors.New("API key must be provided")
+	if cfg.Username == "" || cfg.Password == "" {
+		return nil, errors.New("username/password must be provided")
 	}
 
 	httpClient := cfg.HTTPClient
@@ -103,7 +105,8 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 	client := &Client{
 		httpClient: httpClient,
 		baseURL:    parsed,
-		apiKey:     cfg.APIKey,
+		username:   cfg.Username,
+		password:   cfg.Password,
 		userAgent:  userAgent,
 		maxRetries: maxRetries,
 		retryDelay: retryDelay,
@@ -130,7 +133,7 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body io.Re
 		return nil, fmt.Errorf("unable to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+	req.SetBasicAuth(c.username, c.password)
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Accept", "application/json")
 	if body != nil && req.Header.Get("Content-Type") == "" {

@@ -19,7 +19,8 @@ Populate the following environment variables (or provide values via
 `terraform.tfvars`):
 
 ```shell
-export TF_VAR_forward_api_key="..."
+export TF_VAR_forward_username="you.com"
+export TF_VAR_forward_password="..."
 export TF_VAR_forward_network_id="..."
 export TF_VAR_forward_base_url="https://fwd.app"
 export TF_VAR_baseline_snapshot_id="..."

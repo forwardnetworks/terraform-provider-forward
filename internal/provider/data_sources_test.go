@@ -92,15 +92,10 @@ func TestAccDataSourceVersionAndSnapshots(t *testing.T) {
 	}))
 	defer server.Close()
 
-	t.Setenv("FORWARD_API_KEY", "test-token")
+	t.Setenv("FORWARD_USERNAME", "user")
+	t.Setenv("FORWARD_PASSWORD", "pass")
 
 	config := fmt.Sprintf(`
-variable "forward_api_key" {
-  type        = string
-  default     = "%[2]s"
-  sensitive   = true
-}
-
 variable "forward_base_url" {
   type    = string
   default = "%[1]s"
@@ -108,7 +103,7 @@ variable "forward_base_url" {
 
 variable "forward_network_id" {
   type    = string
-  default = "%[3]s"
+  default = "%[2]s"
 }
 
 variable "forward_insecure" {
@@ -119,7 +114,8 @@ variable "forward_insecure" {
 provider "forward" {
   base_url   = var.forward_base_url
   network_id = var.forward_network_id
-  api_key    = var.forward_api_key
+  username   = "user"
+  password   = "pass"
   insecure   = var.forward_insecure
 }
 
@@ -141,7 +137,7 @@ data "forward_nqe_query" "latest_acl" {
   }
   limit = 5
 }
-`, server.URL, "test-token", testNetworkID)
+`, server.URL, testNetworkID)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },

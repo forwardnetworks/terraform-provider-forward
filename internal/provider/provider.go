@@ -21,10 +21,12 @@ import (
 )
 
 const (
-	envAPIKeyPrimary = "FORWARD_API_KEY"
-	envAPIKeyLegacy  = "FORWARD_API_TOKEN"
-	envNetworkID     = "FORWARD_NETWORK_ID"
-	envBaseURL       = "FORWARD_BASE_URL"
+	envUsername   = "FORWARD_USERNAME"
+	envPassword   = "FORWARD_PASSWORD"
+	envUserLegacy = "FWD_USER"
+	envPassLegacy = "FWD_PASS"
+	envNetworkID  = "FORWARD_NETWORK_ID"
+	envBaseURL    = "FORWARD_BASE_URL"
 )
 
 var _ provider.Provider = &ForwardProvider{}
@@ -47,7 +49,8 @@ type ForwardProvider struct {
 // ForwardProviderModel describes the provider data model.
 type ForwardProviderModel struct {
 	BaseURL   types.String `tfsdk:"base_url"`
-	APIKey    types.String `tfsdk:"api_key"`
+	Username  types.String `tfsdk:"username"`
+	Password  types.String `tfsdk:"password"`
 	Insecure  types.Bool   `tfsdk:"insecure"`
 	NetworkID types.String `tfsdk:"network_id"`
 }
@@ -63,14 +66,21 @@ func (p *ForwardProvider) Schema(ctx context.Context, req provider.SchemaRequest
 		Attributes: map[string]schema.Attribute{
 			"base_url": schema.StringAttribute{
 				MarkdownDescription: "Base URL for the Forward Networks API, for example `https://fwd.app`.",
-				Required:            true,
+				Optional:            true,
 				Validators: []schemavalidator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
-			"api_key": schema.StringAttribute{
-				MarkdownDescription: "API key used to authenticate requests. Marked sensitive and typically sourced from the `FORWARD_API_KEY` environment variable.",
-				Required:            true,
+			"username": schema.StringAttribute{
+				MarkdownDescription: "Forward username for Basic authentication. Typically sourced from `FORWARD_USERNAME` or `FWD_USER`.",
+				Optional:            true,
+				Validators: []schemavalidator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
+			},
+			"password": schema.StringAttribute{
+				MarkdownDescription: "Forward password for Basic authentication. Typically sourced from `FORWARD_PASSWORD` or `FWD_PASS`.",
+				Optional:            true,
 				Sensitive:           true,
 				Validators: []schemavalidator.String{
 					stringvalidator.LengthAtLeast(1),
@@ -82,7 +92,7 @@ func (p *ForwardProvider) Schema(ctx context.Context, req provider.SchemaRequest
 			},
 			"network_id": schema.StringAttribute{
 				MarkdownDescription: "Default Forward Enterprise Network ID used by resources and data sources when an explicit network is not provided.",
-				Required:            true,
+				Optional:            true,
 				Validators: []schemavalidator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
@@ -107,15 +117,26 @@ func (p *ForwardProvider) Configure(ctx context.Context, req provider.ConfigureR
 	if baseURL == "" {
 		baseURL = os.Getenv(envBaseURL)
 	}
-	apiKey := ""
-	if !data.APIKey.IsNull() {
-		apiKey = data.APIKey.ValueString()
+	username := ""
+	if !data.Username.IsNull() {
+		username = data.Username.ValueString()
 	}
-	if apiKey == "" {
-		apiKey = os.Getenv(envAPIKeyPrimary)
+	if username == "" {
+		username = os.Getenv(envUsername)
 	}
-	if apiKey == "" {
-		apiKey = os.Getenv(envAPIKeyLegacy)
+	if username == "" {
+		username = os.Getenv(envUserLegacy)
+	}
+
+	password := ""
+	if !data.Password.IsNull() {
+		password = data.Password.ValueString()
+	}
+	if password == "" {
+		password = os.Getenv(envPassword)
+	}
+	if password == "" {
+		password = os.Getenv(envPassLegacy)
 	}
 
 	insecure := false
@@ -141,12 +162,12 @@ func (p *ForwardProvider) Configure(ctx context.Context, req provider.ConfigureR
 		return
 	}
 
-	if apiKey == "" {
+	if username == "" || password == "" {
 		resp.Diagnostics.AddAttributeError(
-			path.Root("api_key"),
-			"Missing API Key",
-			"The provider cannot create the Forward Networks client because the `api_key` attribute is empty. "+
-				"Set the `api_key` attribute or the `FORWARD_API_KEY` environment variable.",
+			path.Root("username"),
+			"Missing Authentication",
+			"The provider cannot create the Forward Networks client because no authentication method was supplied. "+
+				"Set both `username` and `password`. Environment fallbacks are `FORWARD_USERNAME`/`FORWARD_PASSWORD` or `FWD_USER`/`FWD_PASS`.",
 		)
 		return
 	}
@@ -163,7 +184,8 @@ func (p *ForwardProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 	client, err := sdk.NewClient(ctx, sdk.Config{
 		BaseURL:  baseURL,
-		APIKey:   apiKey,
+		Username: username,
+		Password: password,
 		Insecure: insecure,
 		UserAgent: fmt.Sprintf(
 			"terraform-provider-forward/%s",
@@ -192,6 +214,7 @@ func (p *ForwardProvider) Resources(ctx context.Context) []func() resource.Resou
 		NewIntentCheckResource,
 		NewNQEQueryResource,
 		NewSnapshotResource,
+		NewAWSCloudAccountResource,
 	}
 }
 
@@ -202,6 +225,8 @@ func (p *ForwardProvider) DataSources(ctx context.Context) []func() datasource.D
 		NewIntentChecksDataSource,
 		NewNqeQueryDataSource,
 		NewPathAnalysisDataSource,
+		NewAWSAssumeRoleExternalIDDataSource,
+		NewAWSOrganizationAccountsDataSource,
 	}
 }
 

@@ -13,7 +13,8 @@ terraform {
 provider "forward" {
   base_url   = var.forward_base_url
   network_id = var.forward_network_id
-  api_key    = var.forward_api_key
+  username   = var.forward_username
+  password   = var.forward_password
   insecure   = var.forward_insecure
 }
 

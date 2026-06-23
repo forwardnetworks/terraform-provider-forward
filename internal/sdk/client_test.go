@@ -30,7 +30,8 @@ func TestClient_DoRetriesOnServerError(t *testing.T) {
 
 	client, err := NewClient(context.Background(), Config{
 		BaseURL:    server.URL,
-		APIKey:     "token",
+		Username:   "user",
+		Password:   "pass",
 		MaxRetries: 5,
 		RetryDelay: 5 * time.Millisecond,
 	})
@@ -55,6 +56,35 @@ func TestClient_DoRetriesOnServerError(t *testing.T) {
 	}
 }
 
+func TestClient_NewRequestUsesBasicAuth(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClient(context.Background(), Config{
+		BaseURL:  "https://fwd.example",
+		Username: "user@example.com",
+		Password: "secret",
+	})
+	if err != nil {
+		t.Fatalf("construct client: %v", err)
+	}
+
+	req, err := client.NewRequest(context.Background(), http.MethodGet, "/api/version", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+
+	username, password, ok := req.BasicAuth()
+	if !ok {
+		t.Fatalf("expected basic auth header")
+	}
+	if username != "user@example.com" || password != "secret" {
+		t.Fatalf("unexpected basic auth values: %q / %q", username, password)
+	}
+	if got := req.Header.Get("Authorization"); got == "" {
+		t.Fatalf("expected Authorization header")
+	}
+}
+
 func TestClient_DoStopsAfterMaxRetries(t *testing.T) {
 	t.Parallel()
 
@@ -65,7 +95,8 @@ func TestClient_DoStopsAfterMaxRetries(t *testing.T) {
 
 	client, err := NewClient(context.Background(), Config{
 		BaseURL:    server.URL,
-		APIKey:     "token",
+		Username:   "user",
+		Password:   "pass",
 		MaxRetries: 2,
 		RetryDelay: 1 * time.Millisecond,
 	})
@@ -94,7 +125,8 @@ func TestClient_DoRespectsContextCancel(t *testing.T) {
 
 	client, err := NewClient(context.Background(), Config{
 		BaseURL:    server.URL,
-		APIKey:     "token",
+		Username:   "user",
+		Password:   "pass",
 		MaxRetries: 5,
 		RetryDelay: 50 * time.Millisecond,
 	})

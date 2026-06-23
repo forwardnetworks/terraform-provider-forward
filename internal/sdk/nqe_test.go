@@ -29,7 +29,7 @@ func TestClient_ListNQEQueries(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewClient(context.Background(), Config{BaseURL: server.URL, APIKey: "token"})
+	client, err := NewClient(context.Background(), Config{BaseURL: server.URL, Username: "user", Password: "pass"})
 	if err != nil {
 		t.Fatalf("construct client: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestClient_RunNQEDiff(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewClient(context.Background(), Config{BaseURL: server.URL, APIKey: "token"})
+	client, err := NewClient(context.Background(), Config{BaseURL: server.URL, Username: "user", Password: "pass"})
 	if err != nil {
 		t.Fatalf("construct client: %v", err)
 	}

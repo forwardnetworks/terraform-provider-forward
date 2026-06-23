@@ -1,16 +1,21 @@
 # Terraform Provider Forward Enterprise
 
-This repository contains the Terraform provider for [Forward Networks](https://www.forwardnetworks.com). The provider is built with the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework) and references the Forward Networks OpenAPI specification available at `https://fwd.app/api/spec/complete.json` (requires authentication using a Forward API key) as the authoritative contract for future resources and data sources.
+This repository contains the Terraform provider for [Forward Networks](https://www.forwardnetworks.com). The provider is built with the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework).
 
-The initial pass wires up provider configuration, documentation, and a reusable API client so we can incrementally expose Forward Networks objects as Terraform resources.
+The provider currently supports Forward Basic authentication, snapshot and NQE workflows, intent checks, path analysis, and Terraform-native AWS cloud account onboarding from AWS Organizations.
 
-## Project Status
+## Native IaC Workflow
 
-- ✅ Provider scaffold replaced with Forward-specific configuration, environment-variable support, and HTTP client.
-- ✅ Data sources implemented: platform version, network snapshots, intent checks (pass/fail summaries), and generic NQE query runner.
-- ✅ Generated documentation and runnable examples kept in sync via `make generate`.
-- ✅ Resources implemented: snapshot-bound intent checks and NQE library references.
-- 🚧 Next targets: expand the SDK for pagination/error handling, add managed resources (snapshot lifecycle, intent checks), and formalize release automation.
+For AWS Organizations, this provider is the native Infrastructure as Code path. Terraform can prepare the AWS-side roles with the AWS provider, discover active AWS Organization accounts with this provider, and create or update the Forward AWS cloud setup with this provider.
+
+Use this path when:
+
+- AWS accounts are managed through AWS Organizations.
+- Every collected account has the same Forward collection IAM role name.
+- Forward uses one of the supported AWS collection credential models: Forward assume-role, static collector keys, or collector instance profile.
+- You want Terraform plan/apply to show account additions and removals before Forward is updated.
+
+The JSON/manual-upload workflow remains useful for review or break-glass operations, but it is not required for the normal IaC workflow.
 
 ## Quick Start
 
@@ -18,53 +23,117 @@ The initial pass wires up provider configuration, documentation, and a reusable 
 terraform {
   required_providers {
     forward = {
-      source  = "forwardnetworks/forward"
-      version = "~> 0.1"
+      source = "forwardnetworks/forward"
     }
   }
-}
-
-variable "forward_api_key" {
-  description = "Forward Networks API key."
-  type        = string
-  sensitive   = true
-}
-
-variable "forward_base_url" {
-  description = "Forward Networks API base URL (for example, https://fwd.app)."
-  type        = string
-  default     = "https://fwd.app"
-}
-
-variable "forward_network_id" {
-  description = "Default Forward Enterprise network identifier."
-  type        = string
-}
-
-variable "forward_insecure" {
-  description = "Disable TLS verification (not recommended outside of testing)."
-  type        = bool
-  default     = false
 }
 
 provider "forward" {
   base_url   = var.forward_base_url
   network_id = var.forward_network_id
-  api_key    = var.forward_api_key
-  insecure   = var.forward_insecure
+  username   = var.forward_username
+  password   = var.forward_password
 }
 ```
 
-`network_id` and `base_url` must be supplied in configuration so that resources know which Forward Enterprise environment to target. Only the API key supports an environment-variable fallback natively, but Terraform variables can be populated from environment variables using the `TF_VAR_` prefix.
-
-Example environment variable exports:
+Provider inputs can be supplied directly or with environment variables:
 
 ```shell
-export FORWARD_API_KEY=xxxxxxxxxxxxxxxx
-export TF_VAR_forward_base_url=https://fwd.app
-export TF_VAR_forward_network_id=123456
-export TF_VAR_forward_insecure=false
+export FORWARD_BASE_URL=https://fwd.app
+export FORWARD_NETWORK_ID=123456
+export FORWARD_USERNAME=you@example.com
+export FORWARD_PASSWORD='secret'
 ```
+
+## Native AWS Organization Onboarding
+
+The AWS organization workflow uses two data sources and one resource:
+
+- `forward_aws_assume_role_external_id` fetches the Forward-generated external ID.
+- `forward_aws_organization_accounts` uses the AWS SDK credential chain to call AWS Organizations and build Forward `assume_role_infos`.
+- `forward_aws_cloud_account` creates or patches the Forward AWS cloud setup.
+
+This is a Terraform-native workflow for AWS Organizations onboarding when every collected AWS account has the same IAM role name. Terraform can use the AWS provider to deploy that role, this provider can read AWS Organizations, and this provider can create or update the Forward AWS setup. The legacy JSON/manual-upload workflow remains useful for break-glass review, but it is no longer required for the normal Organizations path.
+
+```mermaid
+flowchart TB
+    subgraph terraform["Terraform apply"]
+        aws_provider["AWS provider\noptional role/StackSet management"]
+        external_id["data.forward_aws_assume_role_external_id"]
+        org_accounts["data.forward_aws_organization_accounts"]
+        fwd_setup["resource.forward_aws_cloud_account"]
+    end
+
+    subgraph aws["AWS Organizations"]
+        org_read["DescribeOrganization\nListAccounts\nListParents"]
+        member_roles["Member accounts\nstable IAM role name"]
+    end
+
+    subgraph forward["Forward platform"]
+        fwd_external["GET /cloudAccounts/aws/assumeRole/externalId"]
+        fwd_write["POST or PATCH /cloudAccounts"]
+    end
+
+    aws_provider -. "creates / updates" .-> member_roles
+    external_id --> fwd_external
+    org_accounts --> org_read
+    org_accounts --> member_roles
+    external_id --> org_accounts
+    org_accounts --> fwd_setup
+    fwd_setup --> fwd_write
+
+    classDef tf fill:#F1EFE8,stroke:#5F5E5A,color:#2C2C2A;
+    classDef awsnode fill:#E1F5EE,stroke:#0F6E56,color:#04342C;
+    classDef fwdnode fill:#E6F1FB,stroke:#185FA5,color:#042C53;
+
+    class aws_provider,external_id,org_accounts,fwd_setup tf;
+    class org_read,member_roles awsnode;
+    class fwd_external,fwd_write fwdnode;
+```
+
+Example:
+
+```hcl
+data "forward_aws_assume_role_external_id" "current" {}
+
+data "forward_aws_organization_accounts" "current" {
+  role_name   = "ForwardNetworksReadOnly"
+  external_id = data.forward_aws_assume_role_external_id.current.external_id
+  aws_profile = "org-readonly"
+}
+
+resource "forward_aws_cloud_account" "organization" {
+  name    = "production-aws"
+  collect = true
+  regions = ["us-east-1", "us-west-2"]
+
+  credential_mode = "forward-assume-role"
+
+  assume_role_infos = data.forward_aws_organization_accounts.current.assume_role_infos
+}
+```
+
+The AWS credentials used by Terraform need read-only Organizations permissions:
+
+- `organizations:DescribeOrganization`
+- `organizations:ListAccounts`
+- `organizations:ListParents`
+
+`forward_aws_organization_accounts` fails if these calls do not succeed. That is intentional: a partial AWS account list could cause a Forward update that drops accounts from collection.
+
+The Forward resource defaults `delete_on_destroy` to `false`. Destroying the Terraform resource removes it from state but does not delete the Forward cloud setup unless `delete_on_destroy = true` is explicitly set.
+
+See [guides/aws-organization-onboarding.md](guides/aws-organization-onboarding.md) for the full workflow and [examples/aws-organization-onboarding](examples/aws-organization-onboarding) for a runnable configuration.
+
+### AWS Collection Credential Modes
+
+`credential_mode` selects how Forward gets the base AWS credentials used to assume the per-account role ARNs in `assume_role_infos`:
+
+- `forward-assume-role`: Forward's AWS account assumes the member-account roles. Use `forward_aws_assume_role_external_id` and configure AWS trust policies with that external ID. This is the default and preferred SaaS workflow.
+- `static-keys`: Terraform sends an AWS access key ID and secret access key to Forward. Forward stores those credentials and uses them to assume the member-account roles. Use this for on-prem deployments that require static IAM keys.
+- `instance-profile`: Terraform sends no AWS access keys to Forward. The collector uses the AWS SDK default credential chain, typically the EC2 instance profile attached to the collector, to assume the member-account roles.
+
+Static-key mode stores sensitive AWS collector credentials in Forward and in Terraform state. Mark variables as sensitive, source them from runtime secret storage, and use protected encrypted remote state.
 
 ## Requirements
 
@@ -77,81 +146,63 @@ export TF_VAR_forward_insecure=false
 go install ./...
 ```
 
-The compiled binary is placed in `$GOBIN` (defaults to `$(go env GOPATH)/bin`).
+The compiled binary is placed in `$GOBIN`, or `$(go env GOPATH)/bin` when `$GOBIN` is unset.
+
+For local development, point Terraform at the locally built provider with a CLI config dev override:
+
+```hcl
+provider_installation {
+  dev_overrides {
+    "forwardnetworks/forward" = "/Users/you/go/bin"
+  }
+  direct {}
+}
+```
+
+See [guides/installation.md](guides/installation.md) for local build and GitHub release binary installation options before Terraform Registry publishing.
 
 ## Developing the Provider
 
-1. `go test ./...` to run unit tests.
-2. `make generate` to refresh documentation after adding resources or data sources.
-3. `make testacc` to run acceptance tests against a Forward Networks environment (these incur live API calls).
-
-During development you can ask Terraform to load the locally-built provider by setting `TF_CLI_CONFIG_FILE` or using the global plugin cache, e.g.:
-
 ```shell
-export TF_PLUGIN_CACHE_DIR="$HOME/.terraform.d/plugin-cache"
-go install ./...
+go test ./...
+make generate
+make testacc
 ```
 
-## Roadmap
-
-1. **Authentication & Client Enhancements**  
-   Finalize authentication flows (token exchange, secondary headers) and extend the SDK helper in `internal/sdk` for common request handling (pagination, error wrapping, retries).
-
-2. **Core Resources**  
-   Prioritize snapshot lifecycle, intent checks, and path analyses based on the Forward API specification. Implement CRUD operations plus acceptance tests for each.
-
-3. **Data Sources**  
-   Surface read-only lookups such as inventory, intents, and compliance summaries to enable composable Terraform plans.
-
-4. **Documentation & Examples**  
-   Keep the `examples/` directory runnable and regenerate docs after each feature addition via `make generate`.
-
-5. **Release Engineering**  
-   Integrate with `goreleaser`, populate `CHANGELOG.md`, and prepare the Terraform Registry publishing metadata once the first stable resource set lands.
-
+`make generate` refreshes provider docs from schema and examples. `make testacc` runs acceptance tests and may call live services depending on the test.
 
 ## Available Resources
 
+- `forward_aws_cloud_account` — creates or patches a Forward AWS cloud account setup.
 - `forward_intent_check` — manages intent checks tied to a snapshot.
 - `forward_nqe_query_definition` — references NQE library entries for intent and query metadata.
-- `forward_snapshot` — captures and tracks Forward Enterprise snapshots. [`internal/provider/snapshot_resource.go`](internal/provider/snapshot_resource.go)
+- `forward_snapshot` — captures and tracks Forward Enterprise snapshots.
 
 ## Available Data Sources
 
-- `forward_version` — exposes deployment build, release, and version metadata. [`internal/provider/version_data_source.go`](internal/provider/version_data_source.go)
-- `forward_snapshots` — lists snapshots for the configured network with optional filters. [`internal/provider/snapshots_data_source.go`](internal/provider/snapshots_data_source.go)
-- `forward_intent_checks` — reports intent check Pass/Fail status for a snapshot, with filterable counts. [`internal/provider/intent_checks_data_source.go`](internal/provider/intent_checks_data_source.go)
-- `forward_nqe_query` — executes NQE queries and returns JSON-formatted results. [`internal/provider/nqe_query_data_source.go`](internal/provider/nqe_query_data_source.go)
-- `forward_path_analysis` — executes path analysis queries and returns hop-level outcomes. [`internal/provider/path_analysis_data_source.go`](internal/provider/path_analysis_data_source.go)
+- `forward_aws_assume_role_external_id` — retrieves the Forward-generated AWS assume-role external ID.
+- `forward_aws_organization_accounts` — discovers AWS Organizations accounts and builds Forward assume-role entries.
+- `forward_intent_checks` — reports intent check pass/fail status for a snapshot.
+- `forward_nqe_query` — executes NQE queries and returns JSON-formatted results.
+- `forward_path_analysis` — executes path analysis queries and returns hop-level outcomes.
+- `forward_snapshots` — lists snapshots for the configured network with optional filters.
+- `forward_version` — exposes deployment build, release, and version metadata.
 
 ## Examples
 
-- [Pre/Post Change Validation](examples/pre-post) – illustrates running intent checks and NQE queries with Terraform pre/post conditions.
+- [AWS Organization Onboarding](examples/aws-organization-onboarding)
+- [Pre/Post Change Validation](examples/pre-post)
 
-## Modules
+## Workflow Guides
 
-- `modules/pre-post/intent_check_guard` – reusable guard for intent check failures.
-- `modules/pre-post/nqe_guard` – reusable guard for NQE drift detection.
-
-## Available Data Sources
-
-## Examples
-
-## Modules
-
-- `modules/pre-post/intent_check_guard` – reusable guard for intent check failures.
-- `modules/pre-post/nqe_guard` – reusable guard for NQE drift detection.
-
-- `forward_version` — exposes deployment build, release, and version metadata. [`internal/provider/version_data_source.go`](internal/provider/version_data_source.go)
-- `forward_snapshots` — lists snapshots for the configured network with optional filters. [`internal/provider/snapshots_data_source.go`](internal/provider/snapshots_data_source.go)
-- `forward_intent_checks` — reports intent check Pass/Fail status for a snapshot, with filterable counts. [`internal/provider/intent_checks_data_source.go`](internal/provider/intent_checks_data_source.go)
-- `forward_nqe_query` — executes NQE queries and returns JSON-formatted results. [`internal/provider/nqe_query_data_source.go`](internal/provider/nqe_query_data_source.go)
-- `forward_path_analysis` — executes path analysis queries and returns hop-level outcomes. [`internal/provider/path_analysis_data_source.go`](internal/provider/path_analysis_data_source.go)
+- [Native AWS Workflow](guides/native-aws-workflow.md)
+- [Native IaC AWS Organization Onboarding](guides/aws-organization-onboarding.md)
+- [Installation Before Registry Publishing](guides/installation.md)
 
 ## Release
 
 1. Update `CHANGELOG.md` with the new version notes.
 2. Run `goreleaser release --snapshot --skip-publish` to verify artifacts locally.
-3. Tag the release (`git tag v0.1.0 && git push --tags`).
+3. Tag the release.
 4. Run `goreleaser release` with appropriate credentials to publish binaries and checksums.
-5. Publish the release to the Terraform Registry once the GitHub release is live.
+5. Publish the release to the Terraform Registry when registry distribution is ready.

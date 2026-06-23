@@ -16,8 +16,13 @@ Retrieve Forward Enterprise API version information.
 # Copyright (c) HashiCorp, Inc.
 # SPDX-License-Identifier: MPL-2.0
 
-variable "forward_api_key" {
-  description = "Forward Networks API key."
+variable "forward_username" {
+  description = "Forward username."
+  type        = string
+}
+
+variable "forward_password" {
+  description = "Forward password."
   type        = string
   sensitive   = true
 }
@@ -41,7 +46,8 @@ variable "forward_insecure" {
 provider "forward" {
   base_url   = var.forward_base_url
   network_id = var.forward_network_id
-  api_key    = var.forward_api_key
+  username   = var.forward_username
+  password   = var.forward_password
   insecure   = var.forward_insecure
 }
 
