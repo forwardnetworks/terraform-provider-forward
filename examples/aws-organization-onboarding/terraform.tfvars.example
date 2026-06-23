@@ -1,0 +1,18 @@
+forward_base_url             = "https://fwd.app"
+forward_network_id           = "12345"
+forward_username             = "you@example.com"
+forward_aws_setup_name       = "production-aws"
+forward_collection_role_name = "ForwardNetworksReadOnly"
+forward_collection_regions   = ["us-east-1", "us-west-2"]
+forward_credential_mode      = "forward-assume-role"
+aws_profile                  = "org-readonly"
+
+# For on-prem static-key collection only:
+# forward_credential_mode                = "static-keys"
+# forward_collector_access_key_id        = "AKIA..."
+# forward_collector_secret_access_key    = "load-from-env-or-secret-manager"
+# assume_role_external_id                = "optional-if-your-role-trust-requires-it"
+
+# For collector instance-profile collection only:
+# forward_credential_mode = "instance-profile"
+# assume_role_external_id = "optional-if-your-role-trust-requires-it"

@@ -49,7 +49,8 @@ func pathAnalysisTestConfig(host string) string {
 provider "forward" {
   base_url   = "%s"
   network_id = "net-1"
-  api_key    = "token"
+  username = "user"
+  password = "pass"
 }
 
 data "forward_path_analysis" "test" {

@@ -1,3 +1,5 @@
+# Copyright (c) HashiCorp, Inc.
+
 version: 2
 
 project_name: terraform-provider-forward
@@ -45,7 +47,3 @@ release:
 changelog:
   use: github
   sort: asc
-
-signs:
-  - artifacts: checksum
-    args: ["sign", "--armor", "--detach-sign", "${artifact}"]
