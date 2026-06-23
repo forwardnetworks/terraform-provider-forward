@@ -63,6 +63,7 @@ type awsCloudAccountResourceModel struct {
 	Concurrency                   types.Int64              `tfsdk:"concurrency"`
 	ConnectionTimeoutSeconds      types.Int64              `tfsdk:"connection_timeout_seconds"`
 	RequestTimeoutSeconds         types.Int64              `tfsdk:"request_timeout_seconds"`
+	AllowAccountRemovals          types.Bool               `tfsdk:"allow_account_removals"`
 	DeleteOnDestroy               types.Bool               `tfsdk:"delete_on_destroy"`
 
 	AccountCount          types.Int64  `tfsdk:"account_count"`
@@ -173,6 +174,12 @@ func (r *AWSCloudAccountResource) Schema(ctx context.Context, req resource.Schem
 				MarkdownDescription: "Optional AWS API request timeout in seconds.",
 				Optional:            true,
 			},
+			"allow_account_removals": schema.BoolAttribute{
+				MarkdownDescription: "Allow Terraform to remove AWS account entries from an existing Forward setup. Defaults to false so a partial Organizations read cannot shrink collection without explicit confirmation.",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
+			},
 			"delete_on_destroy": schema.BoolAttribute{
 				MarkdownDescription: "Delete the Forward cloud account setup when this Terraform resource is destroyed. Defaults to false; destroy otherwise only removes Terraform state.",
 				Optional:            true,
@@ -251,6 +258,10 @@ func (r *AWSCloudAccountResource) Create(ctx context.Context, req resource.Creat
 	if existing != nil {
 		if err := validateExistingAWSCredentialMode(existing, mode); err != nil {
 			resp.Diagnostics.AddError("Existing AWS Credential Mode Differs", err.Error())
+			return
+		}
+		resp.Diagnostics.Append(accountRemovalDiagnostics(plan, existing, body.AssumeRoleInfos)...)
+		if resp.Diagnostics.HasError() {
 			return
 		}
 		if err := r.providerData.Client.UpdateCloudAccount(ctx, networkID, plan.Name.ValueString(), awsCloudAccountPatchRequest(body)); err != nil {
@@ -347,6 +358,24 @@ func (r *AWSCloudAccountResource) Update(ctx context.Context, req resource.Updat
 	plan.UseForwardAccountToAssumeRole = types.BoolValue(mode == awsCredentialModeForwardAssumeRole)
 	body, diags := buildAWSCloudAccountRequest(ctx, plan)
 	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	existing, err := r.providerData.Client.GetCloudAccount(ctx, networkID, plan.Name.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Error checking Forward AWS cloud account", err.Error())
+		return
+	}
+	if !strings.EqualFold(existing.Type, "AWS") {
+		resp.Diagnostics.AddError("Existing Cloud Account Is Not AWS", fmt.Sprintf("Forward cloud account %q already exists with type %q.", existing.Name, existing.Type))
+		return
+	}
+	if err := validateExistingAWSCredentialMode(existing, mode); err != nil {
+		resp.Diagnostics.AddError("Existing AWS Credential Mode Differs", err.Error())
+		return
+	}
+	resp.Diagnostics.Append(accountRemovalDiagnostics(plan, existing, body.AssumeRoleInfos)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -590,6 +619,75 @@ func validateExistingAWSCredentialMode(existing *sdk.CloudAccount, desiredMode s
 		return fmt.Errorf("existing setup %q has useForwardAccountToAssumeRole=%t, but credential_mode %q requires useForwardAccountToAssumeRole=%t", existing.Name, existingUsesForward, desiredMode, desiredUsesForward)
 	}
 	return nil
+}
+
+func accountRemovalDiagnostics(model awsCloudAccountResourceModel, existing *sdk.CloudAccount, planned []sdk.AWSAssumeRoleInfo) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if existing == nil || (!model.AllowAccountRemovals.IsNull() && !model.AllowAccountRemovals.IsUnknown() && model.AllowAccountRemovals.ValueBool()) {
+		return diags
+	}
+
+	plannedByID := map[string]bool{}
+	for _, info := range planned {
+		accountID := awsAssumeRoleInfoAccountID(info)
+		if accountID != "" {
+			plannedByID[accountID] = true
+		}
+	}
+
+	removed := make([]string, 0)
+	for _, info := range existing.AssumeRoleInfos {
+		accountID := awsAssumeRoleInfoAccountID(info)
+		if accountID == "" || plannedByID[accountID] {
+			continue
+		}
+		removed = append(removed, awsAssumeRoleInfoLabel(info))
+	}
+	if len(removed) == 0 {
+		return diags
+	}
+
+	sort.Strings(removed)
+	diags.AddAttributeError(
+		path.Root("allow_account_removals"),
+		"AWS Account Removals Require Confirmation",
+		fmt.Sprintf(
+			"Forward setup %q currently includes %d AWS account entries, but this Terraform plan would remove %d: %s. If those removals are intentional, set allow_account_removals = true and re-run Terraform.",
+			existing.Name,
+			len(existing.AssumeRoleInfos),
+			len(removed),
+			strings.Join(removed, ", "),
+		),
+	)
+	return diags
+}
+
+func awsAssumeRoleInfoAccountID(info sdk.AWSAssumeRoleInfo) string {
+	accountID := strings.TrimSpace(info.AccountID)
+	if accountID != "" {
+		return accountID
+	}
+	return accountIDFromRoleARN(info.RoleArn)
+}
+
+func awsAssumeRoleInfoLabel(info sdk.AWSAssumeRoleInfo) string {
+	accountID := awsAssumeRoleInfoAccountID(info)
+	accountName := strings.TrimSpace(info.AccountName)
+	if accountName != "" && accountID != "" && accountName != accountID {
+		return fmt.Sprintf("%s (%s)", accountID, accountName)
+	}
+	if accountID != "" {
+		return accountID
+	}
+	return strings.TrimSpace(info.RoleArn)
+}
+
+func accountIDFromRoleARN(roleARN string) string {
+	parts := strings.Split(strings.TrimSpace(roleARN), ":")
+	if len(parts) < 6 || parts[0] != "arn" || parts[2] != "iam" {
+		return ""
+	}
+	return parts[4]
 }
 
 func credentialModeFromStateAndAPI(state awsCloudAccountResourceModel, account *sdk.CloudAccount) string {

@@ -79,6 +79,9 @@ resource "forward_aws_cloud_account" "organization" {
   collector_access_key_id     = var.forward_credential_mode == "static-keys" ? var.forward_collector_access_key_id : null
   collector_secret_access_key = var.forward_credential_mode == "static-keys" ? var.forward_collector_secret_access_key : null
 
+  # Defaults to false. Set true only after reviewing a plan that intentionally removes accounts.
+  # allow_account_removals = true
+
   assume_role_infos = data.forward_aws_organization_accounts.current.assume_role_infos
 }
 ```
@@ -94,6 +97,7 @@ resource "forward_aws_cloud_account" "organization" {
 
 ### Optional
 
+- `allow_account_removals` (Boolean) Allow Terraform to remove AWS account entries from an existing Forward setup. Defaults to false so a partial Organizations read cannot shrink collection without explicit confirmation.
 - `collect` (Boolean) Whether Forward should collect this AWS setup.
 - `collector_access_key_id` (String, Sensitive) AWS access key ID stored in Forward when credential_mode is static-keys. Use a Terraform variable sourced from runtime secret storage.
 - `collector_secret_access_key` (String, Sensitive) AWS secret access key stored in Forward when credential_mode is static-keys. This value is sensitive and will be sent only to Forward's create or credential update APIs.

@@ -72,6 +72,19 @@ The data source fails if any of those calls fail. This prevents a partial organi
 
 ## Safety Defaults
 
+When a Forward AWS setup with the same name already exists, the provider patches that setup instead of creating a duplicate. This is useful when converting a manually-created setup into Terraform management.
+
+`forward_aws_cloud_account` refuses to remove existing AWS account entries from a Forward setup unless removals are explicitly confirmed:
+
+```hcl
+resource "forward_aws_cloud_account" "organization" {
+  # ...
+  allow_account_removals = true
+}
+```
+
+Keep `allow_account_removals` unset for normal onboarding and re-runs. Set it only after reviewing a Terraform plan where the removed accounts are expected.
+
 `forward_aws_cloud_account` defaults `delete_on_destroy` to `false`. A Terraform destroy removes the resource from state but does not delete the Forward setup unless the configuration explicitly opts in:
 
 ```hcl

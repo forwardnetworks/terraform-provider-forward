@@ -64,5 +64,8 @@ resource "forward_aws_cloud_account" "organization" {
   collector_access_key_id     = var.forward_credential_mode == "static-keys" ? var.forward_collector_access_key_id : null
   collector_secret_access_key = var.forward_credential_mode == "static-keys" ? var.forward_collector_secret_access_key : null
 
+  # Defaults to false. Set true only after reviewing a plan that intentionally removes accounts.
+  # allow_account_removals = true
+
   assume_role_infos = data.forward_aws_organization_accounts.current.assume_role_infos
 }
