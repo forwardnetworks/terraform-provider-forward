@@ -23,11 +23,11 @@ Manage Forward Enterprise intent checks against a specific snapshot.
 ### Optional
 
 - `enabled` (Boolean) Whether the intent check should be enabled when created.
-- `name` (String) Optional human readable name for the intent check.
-- `note` (String) Optional descriptive note stored with the check.
+- `name` (String) Human readable name. Left unset for an NQE check, which is named after its query.
+- `note` (String) Descriptive note stored with the check. Not accepted for an NQE check.
 - `perf_monitoring_enabled` (Boolean) Enable performance monitoring (supported for existential checks only).
 - `persistent` (Boolean) Whether the intent check should persist to future snapshots.
-- `priority` (String) Intent check priority (NOT_SET, LOW, MEDIUM, HIGH).
+- `priority` (String) Intent check priority (NOT_SET, LOW, MEDIUM, HIGH). Forward defaults it.
 - `tags` (List of String) Tags assigned to the intent check.
 
 ### Read-Only

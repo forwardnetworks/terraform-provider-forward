@@ -88,15 +88,21 @@ func (r *IntentCheckResource) Schema(ctx context.Context, req resource.SchemaReq
 				},
 			},
 			"name": schema.StringAttribute{
-				Optional:            true,
-				MarkdownDescription: "Optional human readable name for the intent check.",
+				Optional: true,
+				Computed: true,
+				// Computed because Forward supplies it for a check that cannot
+				// carry one: an NQE check takes its name from the query it
+				// references, and rejects the field outright.
+				MarkdownDescription: "Human readable name. Left unset for an NQE check, which is named " +
+					"after its query.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"note": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Optional descriptive note stored with the check.",
+				Computed:            true,
+				MarkdownDescription: "Descriptive note stored with the check. Not accepted for an NQE check.",
 			},
 			"enabled": schema.BoolAttribute{
 				Optional:            true,
@@ -108,7 +114,8 @@ func (r *IntentCheckResource) Schema(ctx context.Context, req resource.SchemaReq
 			},
 			"priority": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Intent check priority (NOT_SET, LOW, MEDIUM, HIGH).",
+				Computed:            true,
+				MarkdownDescription: "Intent check priority (NOT_SET, LOW, MEDIUM, HIGH). Forward defaults it.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
