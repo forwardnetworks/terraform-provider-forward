@@ -30,8 +30,8 @@ func TestAccDataSourceVersionAndSnapshots(t *testing.T) {
                 "id": "%s",
                 "state": "PROCESSED",
                 "processingTrigger": "COLLECTION",
-                "creationDateMillis": 1700000000000,
-                "processedAtMillis": 1700000010000
+                "createdAt": "2023-11-14T22:13:20.000Z",
+                "processedAt": "2023-11-14T22:13:30.000Z"
             },
             {
                 "id": "snap-2",
@@ -47,10 +47,10 @@ func TestAccDataSourceVersionAndSnapshots(t *testing.T) {
             "name": "Critical Reachability",
             "status": "PASS",
             "priority": "HIGH",
-            "numViolations": 0,
             "enabled": true,
-            "creationDateMillis": 1700000000000,
-            "executionDateMillis": 1700000015000
+            "createdAt": "2023-11-14T22:13:20.000Z",
+            "definedAt": "2023-11-14T22:13:20.000Z",
+            "executedAt": "2023-11-14T22:13:35.000Z"
         },
         {
             "id": "check-2",
@@ -153,17 +153,17 @@ data "forward_nqe_query" "latest_acl" {
 					),
 					statecheck.ExpectKnownValue(
 						"data.forward_snapshots.all",
-						tfjsonpath.New("snapshots[0].id"),
-						knownvalue.StringExact("snap-1"),
+						tfjsonpath.New("snapshots").AtSliceIndex(0).AtMapKey("id"),
+						knownvalue.StringExact(testSnapshotID),
 					),
 					statecheck.ExpectKnownValue(
 						"data.forward_snapshots.all",
-						tfjsonpath.New("snapshots[0].processed_at_millis"),
-						knownvalue.Int64Exact(1700000010000),
+						tfjsonpath.New("snapshots").AtSliceIndex(0).AtMapKey("processed_at"),
+						knownvalue.StringExact("2023-11-14T22:13:30.000Z"),
 					),
 					statecheck.ExpectKnownValue(
 						"data.forward_snapshots.all",
-						tfjsonpath.New("snapshots[1].is_draft"),
+						tfjsonpath.New("snapshots").AtSliceIndex(1).AtMapKey("is_draft"),
 						knownvalue.Bool(true),
 					),
 					statecheck.ExpectKnownValue(
@@ -173,12 +173,31 @@ data "forward_nqe_query" "latest_acl" {
 					),
 					statecheck.ExpectKnownValue(
 						"data.forward_intent_checks.snapshot_checks",
-						tfjsonpath.New("checks[1].status"),
+						tfjsonpath.New("checks").AtSliceIndex(1).AtMapKey("status"),
 						knownvalue.StringExact("FAIL"),
+					),
+					// The instant, not a millisecond field. Reading the wrong
+					// name left every timestamp null and nothing caught it.
+					statecheck.ExpectKnownValue(
+						"data.forward_intent_checks.snapshot_checks",
+						tfjsonpath.New("checks").AtSliceIndex(0).AtMapKey("executed_at"),
+						knownvalue.StringExact("2023-11-14T22:13:35.000Z"),
+					),
+					// A passing check reports no violation count at all, which
+					// is not the same as a count of zero.
+					statecheck.ExpectKnownValue(
+						"data.forward_intent_checks.snapshot_checks",
+						tfjsonpath.New("checks").AtSliceIndex(0).AtMapKey("num_violations"),
+						knownvalue.Null(),
+					),
+					statecheck.ExpectKnownValue(
+						"data.forward_intent_checks.snapshot_checks",
+						tfjsonpath.New("checks").AtSliceIndex(1).AtMapKey("num_violations"),
+						knownvalue.Int64Exact(1),
 					),
 					statecheck.ExpectKnownValue(
 						"data.forward_nqe_query.latest_acl",
-						tfjsonpath.New("items_json[0]"),
+						tfjsonpath.New("items_json").AtSliceIndex(0),
 						knownvalue.StringExact(`{"fields":{"device":"leaf1","status":"permit"}}`),
 					),
 					statecheck.ExpectKnownValue(

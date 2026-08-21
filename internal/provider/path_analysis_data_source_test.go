@@ -37,7 +37,9 @@ func TestPathAnalysisDataSource(t *testing.T) {
 			{
 				Config: pathAnalysisTestConfig(server.URL),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("data.forward_path_analysis.test", "paths.#", "1"),
+					resource.TestCheckResourceAttr("data.forward_path_analysis.test", "paths_json.#", "1"),
+					resource.TestCheckResourceAttr("data.forward_path_analysis.test", "forwarding_outcome", "DELIVERED"),
+					resource.TestCheckResourceAttr("data.forward_path_analysis.test", "security_outcome", "PERMITTED"),
 				),
 			},
 		},
@@ -59,4 +61,57 @@ data "forward_path_analysis" "test" {
   dst_ip     = "10.0.0.1"
 }
 `, host)
+}
+
+// One delivering path among several is not a delivering search, and a gate
+// that reads it as one would approve exactly the change it exists to stop.
+func TestPathAnalysisReportsDisagreementAsMixed(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"srcIpLocationType":"INTERFACE","dstIpLocationType":"INTERFACE","info":{"paths":[
+		  {"forwardingOutcome":"DELIVERED","securityOutcome":"PERMITTED","hops":[]},
+		  {"forwardingOutcome":"DROPPED","securityOutcome":"PERMITTED","hops":[]}]}}`))
+	}))
+	defer server.Close()
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
+			"forward": providerserver.NewProtocol6WithError(New("test")()),
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: pathAnalysisTestConfig(server.URL),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("data.forward_path_analysis.test", "forwarding_outcome", "MIXED"),
+					// The axes answer separately: security still agrees.
+					resource.TestCheckResourceAttr("data.forward_path_analysis.test", "security_outcome", "PERMITTED"),
+				),
+			},
+		},
+	})
+}
+
+// No paths is a question with no answer, not an outcome.
+func TestPathAnalysisReportsNoPathsAsNull(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"srcIpLocationType":"INTERFACE","dstIpLocationType":"INTERFACE","info":{"paths":[]}}`))
+	}))
+	defer server.Close()
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
+			"forward": providerserver.NewProtocol6WithError(New("test")()),
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: pathAnalysisTestConfig(server.URL),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckNoResourceAttr("data.forward_path_analysis.test", "forwarding_outcome"),
+				),
+			},
+		},
+	})
 }
