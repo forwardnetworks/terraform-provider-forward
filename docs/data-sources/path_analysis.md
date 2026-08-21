@@ -50,9 +50,11 @@ Execute a path analysis query using the Forward Networks API.
 ### Read-Only
 
 - `dst_ip_location_type` (String)
+- `forwarding_outcome` (String) Forwarding outcome shared by every path found, for example `DELIVERED` or `DROPPED`. `MIXED` when the paths disagree, and null when the search found none. Use this to assert on the result; use `paths_json` to see why.
 - `paths_json` (List of String) Path results encoded as JSON strings.
 - `query_url` (String)
 - `return_paths_json` (List of String) Return path results encoded as JSON strings.
+- `security_outcome` (String) Security outcome shared by every path found, for example `PERMITTED` or `DENIED`. `MIXED` when the paths disagree, and null when the search found none.
 - `src_ip_location_type` (String)
 - `timed_out` (Boolean)
 - `unrecognized_values` (Map of List of String)

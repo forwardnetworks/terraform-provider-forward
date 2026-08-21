@@ -59,6 +59,8 @@ type PathAnalysisModel struct {
 	DstIPLocationType types.String `tfsdk:"dst_ip_location_type"`
 	TimedOut          types.Bool   `tfsdk:"timed_out"`
 	QueryURL          types.String `tfsdk:"query_url"`
+	ForwardingOutcome types.String `tfsdk:"forwarding_outcome"`
+	SecurityOutcome   types.String `tfsdk:"security_outcome"`
 	PathsJSON         types.List   `tfsdk:"paths_json"`
 	ReturnPathsJSON   types.List   `tfsdk:"return_paths_json"`
 	Unrecognized      types.Map    `tfsdk:"unrecognized_values"`
@@ -107,6 +109,17 @@ func (d *PathAnalysisDataSource) Schema(ctx context.Context, req datasource.Sche
 			"dst_ip_location_type": schema.StringAttribute{Computed: true},
 			"timed_out":            schema.BoolAttribute{Computed: true},
 			"query_url":            schema.StringAttribute{Computed: true},
+			"forwarding_outcome": schema.StringAttribute{
+				Computed: true,
+				MarkdownDescription: "Forwarding outcome shared by every path found, for example " +
+					"`DELIVERED` or `DROPPED`. `MIXED` when the paths disagree, and null when the " +
+					"search found none. Use this to assert on the result; use `paths_json` to see why.",
+			},
+			"security_outcome": schema.StringAttribute{
+				Computed: true,
+				MarkdownDescription: "Security outcome shared by every path found, for example `PERMITTED` " +
+					"or `DENIED`. `MIXED` when the paths disagree, and null when the search found none.",
+			},
 			"paths_json": schema.ListAttribute{
 				Computed:            true,
 				ElementType:         types.StringType,
@@ -167,6 +180,13 @@ func (d *PathAnalysisDataSource) Read(ctx context.Context, req datasource.ReadRe
 	data.DstIPLocationType = types.StringValue(result.DstIPLocationType)
 	data.TimedOut = types.BoolValue(result.TimedOut)
 	data.QueryURL = types.StringValue(result.QueryURL)
+	data.ForwardingOutcome = sharedOutcome(result.Info.Paths, func(p forward.NetworkPathResult) string {
+		return p.ForwardingOutcome
+	})
+	data.SecurityOutcome = sharedOutcome(result.Info.Paths, func(p forward.NetworkPathResult) string {
+		return p.SecurityOutcome
+	})
+
 	pathsJSON, diag := marshalPaths(ctx, result.Info.Paths)
 	resp.Diagnostics.Append(diag...)
 	if resp.Diagnostics.HasError() {
@@ -189,6 +209,29 @@ func (d *PathAnalysisDataSource) Read(ctx context.Context, req datasource.ReadRe
 	data.Unrecognized = unrec
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// sharedOutcome reduces a set of paths to the one answer they agree on.
+//
+// A search returns every path the traffic could take, and a gate needs a single
+// value to assert against. Reporting the first path's outcome would call a
+// change safe when only one of several paths delivers, so disagreement is
+// reported as MIXED rather than resolved arbitrarily. No paths at all is null:
+// that is a question with no answer, not an outcome.
+func sharedOutcome(paths []forward.NetworkPathResult, of func(forward.NetworkPathResult) string) types.String {
+	if len(paths) == 0 {
+		return types.StringNull()
+	}
+	shared := of(paths[0])
+	for _, p := range paths[1:] {
+		if of(p) != shared {
+			return types.StringValue("MIXED")
+		}
+	}
+	if shared == "" {
+		return types.StringNull()
+	}
+	return types.StringValue(shared)
 }
 
 func buildPathParams(model PathAnalysisModel) forward.PathSearchRequest {
