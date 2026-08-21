@@ -1,3 +1,11 @@
 # Ignore downloaded API specifications
 forward-api.json
 dist/
+
+# Terraform working directories. `terraform init` writes provider binaries
+# here -- hundreds of megabytes that must never reach a commit.
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
