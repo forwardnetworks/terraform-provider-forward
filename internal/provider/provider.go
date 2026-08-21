@@ -173,15 +173,11 @@ func (p *ForwardProvider) Configure(ctx context.Context, req provider.ConfigureR
 		return
 	}
 
-	if networkID == "" {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("network_id"),
-			"Missing Network ID",
-			"The provider cannot create the Forward Networks client because the `network_id` attribute is empty. "+
-				"Set the `network_id` attribute in the Terraform configuration or define the `FORWARD_NETWORK_ID` environment variable.",
-		)
-		return
-	}
+	// A network ID is a convenience default, not a precondition. Requiring one
+	// here made it impossible to write the configuration that creates a
+	// network: there was nothing to name until Terraform had run. Resources
+	// that need a network say so themselves when neither the resource nor the
+	// provider supplies one.
 
 	client, err := forward.NewClient(forward.Config{
 		BaseURL:            baseURL,
@@ -223,6 +219,9 @@ func (p *ForwardProvider) Resources(ctx context.Context) []func() resource.Resou
 		NewPredictedSnapshotResource,
 		NewAWSCloudAccountResource,
 		NewNQELibraryQueryResource,
+		NewNetworkResource,
+		NewProxyResource,
+		NewCollectorAttachmentResource,
 	}
 }
 
