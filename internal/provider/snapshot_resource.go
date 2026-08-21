@@ -185,7 +185,7 @@ func (r *SnapshotResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	snapshot, _, err := r.providerData.Client.Snapshots.Get(ctx, state.NetworkID.ValueString(), state.ID.ValueString())
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+		if isNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
 			return
 		}

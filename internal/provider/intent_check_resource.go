@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
-	"strings"
+	"net/http"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -360,9 +360,18 @@ func stringList(list types.List) []string {
 	return values
 }
 
+// isNotFoundError reports whether err means the object is gone, which is the
+// signal to drop a resource from state rather than fail the operation.
+//
+// Only a real 404 or the SDK's typed absence errors count. A canceled context
+// does not: that says nothing about whether the object exists, and treating it
+// as absence would silently remove a live resource from state when an apply is
+// interrupted.
 func isNotFoundError(err error) bool {
 	if err == nil {
 		return false
 	}
-	return errors.Is(err, context.Canceled) || strings.Contains(strings.ToLower(err.Error()), "not found") || strings.Contains(err.Error(), "404")
+	return forward.IsStatus(err, http.StatusNotFound) ||
+		errors.Is(err, forward.ErrCloudAccountNotFound) ||
+		errors.Is(err, forward.ErrNoSnapshots)
 }
