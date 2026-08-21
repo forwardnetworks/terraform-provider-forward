@@ -59,6 +59,14 @@ github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821143115-faf272ddeb68 h1:
 github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821143115-faf272ddeb68/go.mod h1:jTM+OpFw/c0EEQxOfYsNJwon+u+FevuHPR8PgZOQtYM=
 github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821143837-90567fb15124 h1:S6Bxx7OOblHgkXiGV/PmtUK7Z0HRx94douggA0I4LSY=
 github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821143837-90567fb15124/go.mod h1:jTM+OpFw/c0EEQxOfYsNJwon+u+FevuHPR8PgZOQtYM=
+github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821145523-a2630c0f1dc7 h1:3D26v6ZgkaKnz3+Up7GAt/rLx2gGN2VmjV5GI9riju8=
+github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821145523-a2630c0f1dc7/go.mod h1:jTM+OpFw/c0EEQxOfYsNJwon+u+FevuHPR8PgZOQtYM=
+github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821145621-59f98b5af79d h1:ul1KeYS3/WY+RdwqWZxZwLCed9Ddplk2YtLkK1Q8fL4=
+github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821145621-59f98b5af79d/go.mod h1:jTM+OpFw/c0EEQxOfYsNJwon+u+FevuHPR8PgZOQtYM=
+github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821150314-772369e9133b h1:aX9zNRZuWNYnI34kBu8SKbQCG2osEaEKG6JwOhxNPUE=
+github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821150314-772369e9133b/go.mod h1:jTM+OpFw/c0EEQxOfYsNJwon+u+FevuHPR8PgZOQtYM=
+github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821150531-7986809fb996 h1:NxiLgaQkB4GT44zQys2RKvxzI/YE5naFJLxlkJW9Bqw=
+github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821150531-7986809fb996/go.mod h1:jTM+OpFw/c0EEQxOfYsNJwon+u+FevuHPR8PgZOQtYM=
 github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 h1:+zs/tPmkDkHx3U66DAb0lQFJrpS6731Oaa12ikc+DiI=
 github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376/go.mod h1:an3vInlBmSxCcxctByoQdvwPiA7DTK7jaaFDBTtu0ic=
 github.com/go-git/go-billy/v5 v5.6.2 h1:6Q86EsPXMa7c3YZ3aLAQsMA0VlWmy43r6FHqa/UNbRM=

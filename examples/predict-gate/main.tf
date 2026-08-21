@@ -2,10 +2,13 @@
 
 # Refuse a change Forward predicts will break reachability.
 #
-# The prediction is made from the plan, before the change exists. The check
-# block reads the predicted network and fails the apply if the answer is wrong,
-# so the gate runs in the same command as the change rather than as a report
-# afterwards.
+# The prediction is made from the plan, before the change exists, and the gate
+# runs in the same command as the change rather than as a report afterwards.
+#
+# The gate is a postcondition, not a check block. A failing check block is a
+# warning: Terraform prints it and applies anyway, exit code 0. A failing
+# postcondition is an error, and anything downstream of the gated data source
+# is never created.
 
 terraform {
   required_providers {
@@ -43,12 +46,14 @@ data "forward_path_analysis" "app_to_db" {
   snapshot_id = forward_predicted_snapshot.candidate.id
   src_ip      = "10.49.1.10"
   dst_ip      = "10.51.1.10"
-}
 
-check "reachability_survives" {
-  assert {
-    condition     = data.forward_path_analysis.app_to_db.forwarding_outcome == "DELIVERED"
-    error_message = "This change breaks app -> db: Forward predicts ${data.forward_path_analysis.app_to_db.forwarding_outcome}."
+  lifecycle {
+    postcondition {
+      # forwarding_outcome is the outcome every path agrees on, so a change
+      # that breaks one of several paths reports MIXED and fails here too.
+      condition     = self.forwarding_outcome == "DELIVERED"
+      error_message = "This change breaks app -> db: Forward predicts ${coalesce(self.forwarding_outcome, "no path at all")}."
+    }
   }
 }
 

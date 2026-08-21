@@ -144,19 +144,35 @@ func (r *SnapshotResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	request := forward.SnapshotCreateRequest{}
-	if !plan.Note.IsNull() && !plan.Note.IsUnknown() {
-		request.Note = plan.Note.ValueString()
+	// Collection runs through the collector-task queue, and the snapshot does
+	// not exist until the task finishes, so this blocks even when the caller
+	// did not ask to wait for processing.
+	collectCtx := ctx
+	if timeout := defaultInt(plan.TimeoutSeconds, 600); timeout > 0 {
+		var cancel context.CancelFunc
+		collectCtx, cancel = context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+		defer cancel()
 	}
-
-	snapshot, _, err := r.providerData.Client.Snapshots.Create(ctx, plan.NetworkID.ValueString(), request)
+	snapshot, _, err := r.providerData.Client.Snapshots.Collect(collectCtx, plan.NetworkID.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating snapshot", err.Error())
+		resp.Diagnostics.AddError("Error collecting snapshot", err.Error())
 		return
 	}
 
 	plan.ID = types.StringValue(string(snapshot.ID))
 	updateSnapshotState(&plan, snapshot)
+
+	// The queue takes no note, so labelling is a second call. Reported rather
+	// than ignored: an unlabelled snapshot is indistinguishable from a
+	// labelled one until someone goes looking for it by note.
+	if !plan.Note.IsNull() && !plan.Note.IsUnknown() && plan.Note.ValueString() != "" {
+		noted, _, noteErr := r.providerData.Client.Snapshots.SetNote(ctx, string(snapshot.ID), plan.Note.ValueString())
+		if noteErr != nil {
+			resp.Diagnostics.AddError("Error recording snapshot note", noteErr.Error())
+			return
+		}
+		updateSnapshotState(&plan, noted)
+	}
 
 	wait := !plan.WaitForProcessed.IsNull() && plan.WaitForProcessed.ValueBool()
 	if wait {

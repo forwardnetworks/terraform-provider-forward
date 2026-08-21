@@ -3,6 +3,14 @@
 `terraform plan` says what will change in the cloud. It cannot say what that does to the network. This asks Forward,
 in the same run, and fails the apply if the answer is wrong.
 
+## The gate is a postcondition, not a check block
+
+This matters more than it looks. A failing `check` block is a **warning**: Terraform prints it and applies anyway,
+exiting 0. Nothing is gated. A failing `postcondition` is an **error** -- the run stops, exits 1, and every resource
+downstream of the gated data source is never created.
+
+So the change must depend on the gate, which it does naturally: it reads the predicted snapshot.
+
 ```sh
 terraform -chdir=../../path/to/your/cloud/config plan -out=change.tfplan
 terraform -chdir=../../path/to/your/cloud/config show -json change.tfplan > plan.json
