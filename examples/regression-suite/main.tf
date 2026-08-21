@@ -24,12 +24,11 @@ variable "baseline_snapshot" { type = string }
 
 locals {
   # Named so the demo reads as a story rather than a list of CIDRs.
-  app_tier  = "10.49.1.0/24"
-  app_tier2 = "10.49.2.0/24"
-  transit   = "10.50.1.0/24"
-  db_tier   = "10.51.1.0/24"
-  public    = "10.51.3.0/24"
-  azure     = "10.48.39.0/24"
+  app_tier   = "10.49.1.0/24"
+  transit    = "10.50.1.0/24"
+  db_tier    = "10.51.1.0/24"
+  onboarding = "10.201.0.0/16"
+  azure      = "10.48.39.0/24"
 }
 
 # --- Security posture, as NQE queries in the library ------------------------
@@ -99,15 +98,17 @@ locals {
   must_reach = {
     "app tier reaches the database tier"  = { from = local.app_tier, to = local.db_tier }
     "app tier reaches the transit subnet" = { from = local.app_tier, to = local.transit }
-    "second app AZ reaches the database"  = { from = local.app_tier2, to = local.db_tier }
-    "public tier reaches the app tier"    = { from = local.public, to = local.app_tier }
+    "transit subnet reaches the database" = { from = local.transit, to = local.db_tier }
   }
 
-  # Isolation is the security half: these must never be reachable.
+  # Isolation is the security half. The onboarding VPC has no transit gateway
+  # attachment and Azure is a separate estate, so neither can reach the
+  # database today -- which is what makes these worth asserting. A change that
+  # attaches the VPC, or opens a path from Azure, breaks them.
   must_not_reach = {
-    "database tier is not reachable from Azure"      = { from = local.azure, to = local.db_tier }
-    "database tier does not reach the public subnet" = { from = local.db_tier, to = local.public }
-    "public tier is isolated from the database"      = { from = local.public, to = local.db_tier }
+    "database tier is not reachable from Azure"    = { from = local.azure, to = local.db_tier }
+    "onboarding VPC is isolated from the database" = { from = local.onboarding, to = local.db_tier }
+    "onboarding VPC is isolated from the app tier" = { from = local.onboarding, to = local.app_tier }
   }
 }
 

@@ -25,11 +25,14 @@ resource "forward_predicted_snapshot" "candidate" {
   note        = "gate demo"
 
   cloud_changes_json = jsonencode({
-    routeChanges = [{
-      routeTableId         = var.route_table
-      destinationCidrBlock = var.destination
-      target               = { kind = var.target_kind, id = var.target_id }
-    }]
+    routeChanges = [merge(
+      {
+        routeTableId         = var.route_table
+        destinationCidrBlock = var.destination
+      },
+      # Stating no target removes the route.
+      var.target_id == "" ? {} : { target = { kind = var.target_kind, id = var.target_id } },
+    )]
   })
 }
 
