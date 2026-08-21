@@ -1,3 +1,5 @@
+# Copyright (c) HashiCorp, Inc.
+
 # Refuse a change Forward predicts will break reachability.
 #
 # The prediction is made from the plan, before the change exists. The check
