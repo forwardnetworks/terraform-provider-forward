@@ -21,7 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/forwardnetworks/terraform-provider-forward/internal/sdk"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 )
 
 var _ resource.Resource = &SnapshotResource{}
@@ -41,10 +41,10 @@ type SnapshotResourceModel struct {
 	PollIntervalSeconds types.Int64  `tfsdk:"poll_interval_seconds"`
 	TimeoutSeconds      types.Int64  `tfsdk:"timeout_seconds"`
 
-	State              types.String `tfsdk:"state"`
-	CreationDateMillis types.Int64  `tfsdk:"creation_date_millis"`
-	ProcessedAtMillis  types.Int64  `tfsdk:"processed_at_millis"`
-	RestoredAtMillis   types.Int64  `tfsdk:"restored_at_millis"`
+	State       types.String `tfsdk:"state"`
+	CreatedAt   types.String `tfsdk:"created_at"`
+	ProcessedAt types.String `tfsdk:"processed_at"`
+	RestoredAt  types.String `tfsdk:"restored_at"`
 }
 
 func NewSnapshotResource() resource.Resource {
@@ -99,17 +99,17 @@ func (r *SnapshotResource) Schema(ctx context.Context, req resource.SchemaReques
 				Computed:            true,
 				MarkdownDescription: "Current snapshot state.",
 			},
-			"creation_date_millis": schema.Int64Attribute{
+			"created_at": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "Snapshot creation timestamp (milliseconds).",
+				MarkdownDescription: "Snapshot creation timestamp, as an RFC 3339 instant.",
 			},
-			"processed_at_millis": schema.Int64Attribute{
+			"processed_at": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "Snapshot processed timestamp (milliseconds).",
+				MarkdownDescription: "Timestamp the snapshot finished processing, as an RFC 3339 instant.",
 			},
-			"restored_at_millis": schema.Int64Attribute{
+			"restored_at": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "Snapshot restored timestamp (milliseconds).",
+				MarkdownDescription: "Timestamp the snapshot was restored, as an RFC 3339 instant.",
 			},
 		},
 	}
@@ -144,25 +144,25 @@ func (r *SnapshotResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	request := sdk.SnapshotCreateRequest{}
+	request := forward.SnapshotCreateRequest{}
 	if !plan.Note.IsNull() && !plan.Note.IsUnknown() {
 		request.Note = plan.Note.ValueString()
 	}
 
-	snapshot, err := r.providerData.Client.CreateSnapshot(ctx, plan.NetworkID.ValueString(), request)
+	snapshot, _, err := r.providerData.Client.Snapshots.Create(ctx, plan.NetworkID.ValueString(), request)
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating snapshot", err.Error())
 		return
 	}
 
-	plan.ID = types.StringValue(snapshot.ID)
+	plan.ID = types.StringValue(string(snapshot.ID))
 	updateSnapshotState(&plan, snapshot)
 
 	wait := !plan.WaitForProcessed.IsNull() && plan.WaitForProcessed.ValueBool()
 	if wait {
 		pollInterval := defaultInt(plan.PollIntervalSeconds, 10)
 		timeout := defaultInt(plan.TimeoutSeconds, 600)
-		if pollErr := r.waitForProcessed(ctx, plan.NetworkID.ValueString(), snapshot.ID, time.Duration(pollInterval)*time.Second, time.Duration(timeout)*time.Second, &plan); pollErr != nil {
+		if pollErr := r.waitForProcessed(ctx, plan.NetworkID.ValueString(), string(snapshot.ID), time.Duration(pollInterval)*time.Second, time.Duration(timeout)*time.Second, &plan); pollErr != nil {
 			resp.Diagnostics.AddError("Error waiting for snapshot", pollErr.Error())
 			return
 		}
@@ -183,7 +183,7 @@ func (r *SnapshotResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	snapshot, err := r.providerData.Client.GetSnapshot(ctx, state.NetworkID.ValueString(), state.ID.ValueString())
+	snapshot, _, err := r.providerData.Client.Snapshots.Get(ctx, state.NetworkID.ValueString(), state.ID.ValueString())
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "not found") {
 			resp.State.RemoveResource(ctx)
@@ -219,7 +219,7 @@ func (r *SnapshotResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
-	if err := r.providerData.Client.DeleteSnapshot(ctx, state.ID.ValueString()); err != nil && !isNotFoundError(err) {
+	if _, err := r.providerData.Client.Snapshots.Delete(ctx, state.ID.ValueString()); err != nil && !isNotFoundError(err) {
 		resp.Diagnostics.AddError("Error deleting snapshot", err.Error())
 	}
 }
@@ -235,55 +235,37 @@ func (r *SnapshotResource) ImportState(ctx context.Context, req resource.ImportS
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), parts[1])...)
 }
 
+// waitForProcessed blocks until the snapshot finishes, refreshing Terraform
+// state on every observation so a timeout still leaves behind the last state
+// Forward reported rather than the one at creation.
 func (r *SnapshotResource) waitForProcessed(ctx context.Context, networkID, snapshotID string, interval, timeout time.Duration, state *SnapshotResourceModel) error {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
-	timeoutChan := time.After(timeout)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-timeoutChan:
-			return errors.New("snapshot processing timed out")
-		case <-ticker.C:
-			snapshot, err := r.providerData.Client.GetSnapshot(ctx, networkID, snapshotID)
-			if err != nil {
-				if strings.Contains(strings.ToLower(err.Error()), "not found") {
-					return err
-				}
-				continue
-			}
-
-			updateSnapshotState(state, snapshot)
-			if strings.EqualFold(snapshot.State, "PROCESSED") {
-				return nil
-			}
-			if strings.EqualFold(snapshot.State, "FAILED") {
-				return fmt.Errorf("snapshot %s failed", snapshotID)
-			}
-		}
+	poller, _, err := r.providerData.Client.Snapshots.Operation(ctx, networkID, snapshotID)
+	if err != nil {
+		return err
 	}
+	final, _, err := poller.Wait(ctx, forward.PollOptions[forward.Snapshot]{
+		Interval: interval,
+		OnUpdate: func(update forward.PollUpdate[forward.Snapshot]) {
+			updateSnapshotState(state, update.Value)
+		},
+	})
+	if final != nil {
+		updateSnapshotState(state, final)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("snapshot %s did not finish processing within %s", snapshotID, timeout)
+	}
+	return err
 }
 
-func updateSnapshotState(model *SnapshotResourceModel, snapshot *sdk.SnapshotDetails) {
+func updateSnapshotState(model *SnapshotResourceModel, snapshot *forward.Snapshot) {
 	model.State = stringOrNullValue(snapshot.State)
-	if snapshot.CreationDateMillis != nil {
-		model.CreationDateMillis = types.Int64Value(*snapshot.CreationDateMillis)
-	} else {
-		model.CreationDateMillis = types.Int64Null()
-	}
-	if snapshot.ProcessedAtMillis != nil {
-		model.ProcessedAtMillis = types.Int64Value(*snapshot.ProcessedAtMillis)
-	} else {
-		model.ProcessedAtMillis = types.Int64Null()
-	}
-	if snapshot.RestoredAtMillis != nil {
-		model.RestoredAtMillis = types.Int64Value(*snapshot.RestoredAtMillis)
-	} else {
-		model.RestoredAtMillis = types.Int64Null()
-	}
+	model.CreatedAt = stringOrNullValue(snapshot.CreatedAt)
+	model.ProcessedAt = stringOrNullValue(snapshot.ProcessedAt)
+	model.RestoredAt = stringOrNullValue(snapshot.RestoredAt)
 }
 
 func defaultInt(value types.Int64, fallback int64) int64 {

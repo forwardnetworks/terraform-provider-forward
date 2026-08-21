@@ -95,7 +95,7 @@ func (d *AWSAssumeRoleExternalIDDataSource) Read(ctx context.Context, req dataso
 		return
 	}
 
-	externalID, err := d.providerData.Client.AWSAssumeRoleExternalID(ctx, networkID)
+	externalID, _, err := d.providerData.Client.CloudAccounts.AWSAssumeRoleExternalID(ctx, networkID)
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to Retrieve AWS External ID", err.Error())
 		return

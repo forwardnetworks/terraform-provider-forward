@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"strings"
@@ -22,7 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
-	"github.com/forwardnetworks/terraform-provider-forward/internal/sdk"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 )
 
 var _ resource.Resource = &IntentCheckResource{}
@@ -48,7 +47,7 @@ type IntentCheckResourceModel struct {
 
 	Status            types.String `tfsdk:"status"`
 	NumViolations     types.Int64  `tfsdk:"num_violations"`
-	ExecutionDateMs   types.Int64  `tfsdk:"execution_date_millis"`
+	ExecutedAt        types.String `tfsdk:"executed_at"`
 	ExecutionDuration types.Int64  `tfsdk:"execution_duration_millis"`
 }
 
@@ -129,9 +128,9 @@ func (r *IntentCheckResource) Schema(ctx context.Context, req resource.SchemaReq
 				Computed:            true,
 				MarkdownDescription: "Number of violations detected by the check.",
 			},
-			"execution_date_millis": schema.Int64Attribute{
+			"executed_at": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "Execution timestamp (milliseconds since epoch).",
+				MarkdownDescription: "Timestamp the check last ran, as an RFC 3339 instant.",
 			},
 			"execution_duration_millis": schema.Int64Attribute{
 				Computed:            true,
@@ -179,7 +178,7 @@ func (r *IntentCheckResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	reqBody := sdk.NewCheckRequest{
+	reqBody := forward.NewCheck{
 		Definition:            definition,
 		Enabled:               boolPointer(plan.Enabled),
 		Name:                  stringOrEmpty(plan.Name),
@@ -191,14 +190,14 @@ func (r *IntentCheckResource) Create(ctx context.Context, req resource.CreateReq
 
 	persistent := boolPointer(plan.Persistent)
 
-	result, err := r.providerData.Client.AddSnapshotCheck(ctx, plan.SnapshotID.ValueString(), reqBody, persistent)
+	result, _, err := r.providerData.Client.Checks.Create(ctx, plan.SnapshotID.ValueString(), reqBody, persistent)
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating intent check", err.Error())
 		return
 	}
 
-	plan.ID = types.StringValue(result.ID)
-	setCheckState(ctx, &plan, result)
+	plan.ID = types.StringValue(string(result.ID))
+	setCheckState(ctx, &plan, &result.Check)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
@@ -218,7 +217,7 @@ func (r *IntentCheckResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	result, err := r.providerData.Client.GetSnapshotCheck(ctx, state.SnapshotID.ValueString(), state.ID.ValueString())
+	result, _, err := r.providerData.Client.Checks.Get(ctx, state.SnapshotID.ValueString(), state.ID.ValueString())
 	if err != nil {
 		if isNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -228,7 +227,7 @@ func (r *IntentCheckResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	setCheckState(ctx, &state, &result.CheckResult)
+	setCheckState(ctx, &state, &result.Check)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -257,7 +256,7 @@ func (r *IntentCheckResource) Delete(ctx context.Context, req resource.DeleteReq
 		return
 	}
 
-	err := r.providerData.Client.DeactivateSnapshotCheck(ctx, state.SnapshotID.ValueString(), state.ID.ValueString())
+	_, err := r.providerData.Client.Checks.Deactivate(ctx, state.SnapshotID.ValueString(), state.ID.ValueString())
 	if err != nil && !isNotFoundError(err) {
 		resp.Diagnostics.AddError("Error deleting intent check", err.Error())
 	}
@@ -267,14 +266,14 @@ func (r *IntentCheckResource) ImportState(ctx context.Context, req resource.Impo
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-func parseCheckDefinition(definition types.String) (sdk.CheckDefinition, diag.Diagnostics) {
+func parseCheckDefinition(definition types.String) (map[string]any, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if definition.IsNull() || definition.IsUnknown() {
 		diags.AddAttributeError(path.Root("definition_json"), "Missing Definition", "definition_json must be provided.")
 		return nil, diags
 	}
 
-	var payload sdk.CheckDefinition
+	var payload map[string]any
 	if err := json.Unmarshal([]byte(definition.ValueString()), &payload); err != nil {
 		diags.AddAttributeError(path.Root("definition_json"), "Invalid Definition JSON", err.Error())
 		return nil, diags
@@ -283,7 +282,7 @@ func parseCheckDefinition(definition types.String) (sdk.CheckDefinition, diag.Di
 	return payload, diags
 }
 
-func setCheckState(_ context.Context, model *IntentCheckResourceModel, result *sdk.CheckResult) {
+func setCheckState(_ context.Context, model *IntentCheckResourceModel, result *forward.Check) {
 	if result == nil {
 		return
 	}
@@ -311,13 +310,9 @@ func setCheckState(_ context.Context, model *IntentCheckResourceModel, result *s
 	} else {
 		model.NumViolations = types.Int64Null()
 	}
-	if result.ExecutionDateMillis != nil {
-		model.ExecutionDateMs = types.Int64Value(*result.ExecutionDateMillis)
-	} else {
-		model.ExecutionDateMs = types.Int64Null()
-	}
-	if result.ExecutionDuration != nil {
-		model.ExecutionDuration = types.Int64Value(*result.ExecutionDuration)
+	model.ExecutedAt = stringOrNull(result.ExecutedAt)
+	if result.ExecutionDurationMS != nil {
+		model.ExecutionDuration = types.Int64Value(*result.ExecutionDurationMS)
 	} else {
 		model.ExecutionDuration = types.Int64Null()
 	}

@@ -82,7 +82,7 @@ func (d *VersionDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	version, err := d.providerData.Client.GetVersion(ctx)
+	version, _, err := d.providerData.Client.Version.Get(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Retrieve Version",

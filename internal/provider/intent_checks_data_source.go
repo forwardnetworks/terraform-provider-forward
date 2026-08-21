@@ -15,7 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"github.com/forwardnetworks/terraform-provider-forward/internal/sdk"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 )
 
 var _ datasource.DataSource = &IntentChecksDataSource{}
@@ -53,8 +53,8 @@ type intentCheckItem struct {
 	Enabled               types.Bool   `tfsdk:"enabled"`
 	PerfMonitoringEnabled types.Bool   `tfsdk:"perf_monitoring_enabled"`
 	NumViolations         types.Int64  `tfsdk:"num_violations"`
-	CreationDateMillis    types.Int64  `tfsdk:"creation_date_millis"`
-	ExecutionDateMillis   types.Int64  `tfsdk:"execution_date_millis"`
+	CreatedAt             types.String `tfsdk:"created_at"`
+	ExecutedAt            types.String `tfsdk:"executed_at"`
 	ExecutionDuration     types.Int64  `tfsdk:"execution_duration_millis"`
 	Tags                  types.List   `tfsdk:"tags"`
 }
@@ -116,8 +116,8 @@ func (d *IntentChecksDataSource) Schema(ctx context.Context, req datasource.Sche
 						"enabled":                   schema.BoolAttribute{Computed: true},
 						"perf_monitoring_enabled":   schema.BoolAttribute{Computed: true},
 						"num_violations":            schema.Int64Attribute{Computed: true},
-						"creation_date_millis":      schema.Int64Attribute{Computed: true},
-						"execution_date_millis":     schema.Int64Attribute{Computed: true},
+						"created_at":                schema.StringAttribute{Computed: true},
+						"executed_at":               schema.StringAttribute{Computed: true},
 						"execution_duration_millis": schema.Int64Attribute{Computed: true},
 						"tags": schema.ListAttribute{
 							ElementType: types.StringType,
@@ -177,7 +177,7 @@ func (d *IntentChecksDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
-	checks, err := d.providerData.Client.ListSnapshotChecks(ctx, data.SnapshotID.ValueString(), options)
+	checks, _, err := d.providerData.Client.Checks.List(ctx, data.SnapshotID.ValueString(), options)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Retrieve Intent Checks",
@@ -196,7 +196,7 @@ func (d *IntentChecksDataSource) Read(ctx context.Context, req datasource.ReadRe
 	items := make([]intentCheckItem, 0, len(checks))
 	for _, check := range checks {
 		item := intentCheckItem{
-			ID:                    types.StringValue(check.ID),
+			ID:                    types.StringValue(string(check.ID)),
 			Name:                  stringOrNull(check.Name),
 			Status:                stringOrNull(check.Status),
 			Priority:              stringOrNull(check.Priority),
@@ -205,9 +205,9 @@ func (d *IntentChecksDataSource) Read(ctx context.Context, req datasource.ReadRe
 			Enabled:               boolPointerOrNull(check.Enabled),
 			PerfMonitoringEnabled: boolPointerOrNull(check.PerfMonitoringEnabled),
 			NumViolations:         int64PointerOrNull(check.NumViolations),
-			CreationDateMillis:    int64PointerOrNull(check.CreationDateMillis),
-			ExecutionDateMillis:   int64PointerOrNull(check.ExecutionDateMillis),
-			ExecutionDuration:     int64PointerOrNull(check.ExecutionDuration),
+			CreatedAt:             stringOrNull(check.CreatedAt),
+			ExecutedAt:            stringOrNull(check.ExecutedAt),
+			ExecutionDuration:     int64PointerOrNull(check.ExecutionDurationMS),
 			Tags:                  listOfStrings(check.Tags),
 		}
 
@@ -230,9 +230,9 @@ func (d *IntentChecksDataSource) Read(ctx context.Context, req datasource.ReadRe
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func expandCheckListOptions(ctx context.Context, data intentChecksDataSourceModel) (sdk.CheckListOptions, diag.Diagnostics) {
+func expandCheckListOptions(ctx context.Context, data intentChecksDataSourceModel) (forward.CheckListOptions, diag.Diagnostics) {
 	var diags diag.Diagnostics
-	options := sdk.CheckListOptions{}
+	options := forward.CheckListOptions{}
 
 	if !data.Statuses.IsNull() && !data.Statuses.IsUnknown() {
 		var statuses []string

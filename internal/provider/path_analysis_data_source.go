@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/forwardnetworks/terraform-provider-forward/internal/sdk"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 )
 
 var _ datasource.DataSource = &PathAnalysisDataSource{}
@@ -157,7 +157,7 @@ func (d *PathAnalysisDataSource) Read(ctx context.Context, req datasource.ReadRe
 	}
 
 	params := buildPathParams(data)
-	result, err := d.providerData.Client.SearchPaths(ctx, data.NetworkID.ValueString(), params)
+	result, _, err := d.providerData.Client.Networks.Paths(ctx, data.NetworkID.ValueString(), params)
 	if err != nil {
 		resp.Diagnostics.AddError("Error executing path analysis", err.Error())
 		return
@@ -167,7 +167,6 @@ func (d *PathAnalysisDataSource) Read(ctx context.Context, req datasource.ReadRe
 	data.DstIPLocationType = types.StringValue(result.DstIPLocationType)
 	data.TimedOut = types.BoolValue(result.TimedOut)
 	data.QueryURL = types.StringValue(result.QueryURL)
-
 	pathsJSON, diag := marshalPaths(ctx, result.Info.Paths)
 	resp.Diagnostics.Append(diag...)
 	if resp.Diagnostics.HasError() {
@@ -192,8 +191,8 @@ func (d *PathAnalysisDataSource) Read(ctx context.Context, req datasource.ReadRe
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func buildPathParams(model PathAnalysisModel) sdk.PathSearchParams {
-	params := sdk.PathSearchParams{
+func buildPathParams(model PathAnalysisModel) forward.PathSearchRequest {
+	params := forward.PathSearchRequest{
 		From:        stringValue(model.From),
 		SrcIP:       stringValue(model.SrcIP),
 		DstIP:       model.DstIP.ValueString(),
@@ -239,7 +238,7 @@ func buildPathParams(model PathAnalysisModel) sdk.PathSearchParams {
 	return params
 }
 
-func marshalPaths(ctx context.Context, paths []sdk.Path) (types.List, diag.Diagnostics) {
+func marshalPaths(ctx context.Context, paths []forward.NetworkPathResult) (types.List, diag.Diagnostics) {
 	if len(paths) == 0 {
 		return types.ListNull(types.StringType), nil
 	}
@@ -257,7 +256,7 @@ func marshalPaths(ctx context.Context, paths []sdk.Path) (types.List, diag.Diagn
 	return list, d
 }
 
-func marshalUnrecognized(ctx context.Context, values sdk.PathUnrecognizedValue) (types.Map, diag.Diagnostics) {
+func marshalUnrecognized(ctx context.Context, values forward.PathUnrecognizedValue) (types.Map, diag.Diagnostics) {
 	data := map[string][]string{
 		"app_id":        values.AppID,
 		"user_id":       values.UserID,

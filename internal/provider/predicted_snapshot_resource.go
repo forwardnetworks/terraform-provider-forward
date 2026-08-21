@@ -18,7 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/forwardnetworks/terraform-provider-forward/internal/sdk"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 )
 
 var _ resource.Resource = &PredictedSnapshotResource{}
@@ -201,12 +201,12 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 
 	base := data.BaseSnapshotID.ValueString()
 	if base == "" {
-		latest, err := client.LatestCollectedSnapshot(ctx, networkID)
+		latest, _, err := client.Snapshots.LatestCollected(ctx, networkID)
 		if err != nil {
 			resp.Diagnostics.AddError("No Base Snapshot", err.Error())
 			return
 		}
-		base = latest.ID
+		base = string(latest.ID)
 	}
 	data.BaseSnapshotID = types.StringValue(base)
 
@@ -216,45 +216,48 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 	}
 	data.Note = types.StringValue(note)
 
-	changeSet, err := client.CreateChangeSet(ctx, networkID, note, base)
+	changeSet, _, err := client.Predict.CreateChangeSet(ctx, networkID, forward.ChangeSetCreateRequest{
+		Name:       note,
+		SnapshotID: base,
+	})
 	if err != nil {
 		resp.Diagnostics.AddError("Change Set Not Created", err.Error())
 		return
 	}
-	data.ChangeSetID = types.StringValue(changeSet.ID)
+	data.ChangeSetID = types.StringValue(string(changeSet.ID))
 
 	// From here the change set exists, so every failure discards it rather than
 	// leaving a draft nobody owns behind.
 	fail := func(summary string, err error) {
 		if !data.KeepChangeSet.ValueBool() {
-			_ = client.DeleteChangeSet(ctx, networkID, changeSet.ID)
+			_, _ = client.Predict.DeleteChangeSet(ctx, networkID, string(changeSet.ID))
 		}
 		resp.Diagnostics.AddError(summary, err.Error())
 	}
 
 	source := data.SourceName.ValueString()
 	if plan != "" {
-		err = client.StageTerraformPlan(ctx, networkID, changeSet.ID, source, []byte(plan))
+		_, err = client.Predict.StageTerraformPlan(ctx, networkID, string(changeSet.ID), source, []byte(plan))
 	} else {
-		var parsed sdk.CloudChanges
+		var parsed forward.CloudChanges
 		if err = unmarshalCloudChanges(changes, &parsed); err == nil {
-			err = client.StageCloudChanges(ctx, networkID, changeSet.ID, source, parsed)
+			_, err = client.Predict.StageCloudChanges(ctx, networkID, string(changeSet.ID), source, parsed)
 		}
 	}
 	if err != nil {
 		fail("Change Not Staged", err)
 		return
 	}
-	if err := client.CommitChangeSet(ctx, networkID, changeSet.ID, note); err != nil {
+	if _, err := client.Predict.Commit(ctx, networkID, string(changeSet.ID), note); err != nil {
 		fail("Change Set Not Committed", err)
 		return
 	}
-	predicted, err := client.RunPredict(ctx, networkID, changeSet.ID, note)
+	predicted, _, err := client.Predict.Run(ctx, networkID, string(changeSet.ID), note)
 	if err != nil {
 		fail("Predict Refused", err)
 		return
 	}
-	data.ID = types.StringValue(predicted.ID)
+	data.ID = types.StringValue(string(predicted.ID))
 	data.State = types.StringValue(predicted.State)
 
 	// A snapshot still processing has no model to read, so returning here would
@@ -262,8 +265,14 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 	timeout := time.Duration(data.TimeoutSeconds.ValueInt64()) * time.Second
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	details, err := client.AwaitSnapshot(waitCtx, networkID, predicted.ID,
-		time.Duration(data.PollIntervalSeconds.ValueInt64())*time.Second)
+	poller, _, err := client.Snapshots.Operation(waitCtx, networkID, string(predicted.ID))
+	if err != nil {
+		fail("Prediction Did Not Finish", err)
+		return
+	}
+	details, _, err := poller.Wait(waitCtx, forward.PollOptions[forward.Snapshot]{
+		Interval: time.Duration(data.PollIntervalSeconds.ValueInt64()) * time.Second,
+	})
 	if err != nil {
 		fail("Prediction Did Not Finish", err)
 		return
@@ -283,7 +292,7 @@ func (r *PredictedSnapshotResource) Read(ctx context.Context, req resource.ReadR
 	if resp.Diagnostics.HasError() || r.providerData == nil || r.providerData.Client == nil {
 		return
 	}
-	details, err := r.providerData.Client.GetSnapshot(ctx, data.NetworkID.ValueString(), data.ID.ValueString())
+	details, _, err := r.providerData.Client.Snapshots.Get(ctx, data.NetworkID.ValueString(), data.ID.ValueString())
 	if err != nil {
 		resp.State.RemoveResource(ctx)
 		return
@@ -311,7 +320,7 @@ func (r *PredictedSnapshotResource) Delete(ctx context.Context, req resource.Del
 	if data.KeepChangeSet.ValueBool() || data.ChangeSetID.ValueString() == "" {
 		return
 	}
-	if err := r.providerData.Client.DeleteChangeSet(ctx,
+	if _, err := r.providerData.Client.Predict.DeleteChangeSet(ctx,
 		data.NetworkID.ValueString(), data.ChangeSetID.ValueString()); err != nil {
 		resp.Diagnostics.AddWarning("Change Set Not Discarded",
 			fmt.Sprintf("The predicted snapshot is gone from state but change set %s remains: %s",
@@ -322,7 +331,7 @@ func (r *PredictedSnapshotResource) Delete(ctx context.Context, req resource.Del
 // unmarshalCloudChanges decodes the stated changes, refusing silently-empty
 // input: a body that parses to no changes at all would predict nothing and
 // report success.
-func unmarshalCloudChanges(raw string, out *sdk.CloudChanges) error {
+func unmarshalCloudChanges(raw string, out *forward.CloudChanges) error {
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	// Unknown fields are refused: a misspelled category would otherwise be
 	// dropped and the prediction would quietly be of a smaller change.

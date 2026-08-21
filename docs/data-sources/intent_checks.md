@@ -83,10 +83,10 @@ data "forward_intent_checks" "snapshot_checks" {
 
 Read-Only:
 
-- `creation_date_millis` (Number)
+- `created_at` (String)
 - `description` (String)
 - `enabled` (Boolean)
-- `execution_date_millis` (Number)
+- `executed_at` (String)
 - `execution_duration_millis` (Number)
 - `id` (String)
 - `name` (String)

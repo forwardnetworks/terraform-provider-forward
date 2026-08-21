@@ -19,11 +19,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 
-	"github.com/forwardnetworks/terraform-provider-forward/internal/sdk"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 )
 
 func TestAccAWSCloudAccountResourceCreatesAndUpdates(t *testing.T) {
-	var stored *sdk.AWSCloudAccountRequest
+	var stored *forward.CloudAccountRequest
 	var postCount int
 	var patchCount int
 
@@ -41,7 +41,7 @@ func TestAccAWSCloudAccountResourceCreatesAndUpdates(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]any{cloudAccountResponse(*stored)})
 		case r.Method == http.MethodPost && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts", testNetworkID):
 			postCount++
-			var payload sdk.AWSCloudAccountRequest
+			var payload forward.CloudAccountRequest
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -64,7 +64,7 @@ func TestAccAWSCloudAccountResourceCreatesAndUpdates(t *testing.T) {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			var payload sdk.AWSCloudAccountRequest
+			var payload forward.CloudAccountRequest
 			if err := json.Unmarshal(encoded, &payload); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -154,10 +154,10 @@ func TestAccAWSCloudAccountResourceCreatesAndUpdates(t *testing.T) {
 
 func TestAccAWSCloudAccountResourceAdoptsExistingSetup(t *testing.T) {
 	stored := awsCloudAccountRequestWithAccounts(
-		sdk.AWSAssumeRoleInfo{
+		forward.AWSAssumeRoleInfo{
 			AccountID:   "111111111111",
 			AccountName: "prod",
-			RoleArn:     "arn:aws:iam::111111111111:role/ForwardNetworksReadOnly",
+			RoleARN:     "arn:aws:iam::111111111111:role/ForwardNetworksReadOnly",
 			ExternalID:  "Org:55",
 			Enabled:     true,
 		},
@@ -178,7 +178,7 @@ func TestAccAWSCloudAccountResourceAdoptsExistingSetup(t *testing.T) {
 			http.Error(w, "create should not be called for an existing setup", http.StatusConflict)
 		case r.Method == http.MethodPatch && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts/%s", testNetworkID, "org-aws"):
 			patchCount++
-			var payload sdk.AWSCloudAccountRequest
+			var payload forward.CloudAccountRequest
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -239,17 +239,17 @@ func TestAccAWSCloudAccountResourceAdoptsExistingSetup(t *testing.T) {
 
 func TestAccAWSCloudAccountResourceBlocksAccountRemovalsByDefault(t *testing.T) {
 	stored := awsCloudAccountRequestWithAccounts(
-		sdk.AWSAssumeRoleInfo{
+		forward.AWSAssumeRoleInfo{
 			AccountID:   "111111111111",
 			AccountName: "prod",
-			RoleArn:     "arn:aws:iam::111111111111:role/ForwardNetworksReadOnly",
+			RoleARN:     "arn:aws:iam::111111111111:role/ForwardNetworksReadOnly",
 			ExternalID:  "Org:55",
 			Enabled:     true,
 		},
-		sdk.AWSAssumeRoleInfo{
+		forward.AWSAssumeRoleInfo{
 			AccountID:   "222222222222",
 			AccountName: "dev",
-			RoleArn:     "arn:aws:iam::222222222222:role/ForwardNetworksReadOnly",
+			RoleARN:     "arn:aws:iam::222222222222:role/ForwardNetworksReadOnly",
 			ExternalID:  "Org:55",
 			Enabled:     true,
 		},
@@ -294,17 +294,17 @@ func TestAccAWSCloudAccountResourceBlocksAccountRemovalsByDefault(t *testing.T) 
 
 func TestAccAWSCloudAccountResourceAllowsAccountRemovals(t *testing.T) {
 	stored := awsCloudAccountRequestWithAccounts(
-		sdk.AWSAssumeRoleInfo{
+		forward.AWSAssumeRoleInfo{
 			AccountID:   "111111111111",
 			AccountName: "prod",
-			RoleArn:     "arn:aws:iam::111111111111:role/ForwardNetworksReadOnly",
+			RoleARN:     "arn:aws:iam::111111111111:role/ForwardNetworksReadOnly",
 			ExternalID:  "Org:55",
 			Enabled:     true,
 		},
-		sdk.AWSAssumeRoleInfo{
+		forward.AWSAssumeRoleInfo{
 			AccountID:   "222222222222",
 			AccountName: "dev",
-			RoleArn:     "arn:aws:iam::222222222222:role/ForwardNetworksReadOnly",
+			RoleARN:     "arn:aws:iam::222222222222:role/ForwardNetworksReadOnly",
 			ExternalID:  "Org:55",
 			Enabled:     true,
 		},
@@ -321,7 +321,7 @@ func TestAccAWSCloudAccountResourceAllowsAccountRemovals(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]any{cloudAccountResponse(*stored)})
 		case r.Method == http.MethodPatch && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts/%s", testNetworkID, "org-aws"):
 			patchCount++
-			var payload sdk.AWSCloudAccountRequest
+			var payload forward.CloudAccountRequest
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -367,8 +367,8 @@ func TestAccAWSCloudAccountResourceAllowsAccountRemovals(t *testing.T) {
 }
 
 func TestAccAWSCloudAccountResourceStaticKeysUpdateCredential(t *testing.T) {
-	var stored *sdk.AWSCloudAccountRequest
-	var credential sdk.AWSCloudAccountCredentialRequest
+	var stored *forward.CloudAccountRequest
+	var credential forward.CloudAccountCredentialRequest
 	var postCount int
 	var patchCount int
 	var credentialCount int
@@ -384,7 +384,7 @@ func TestAccAWSCloudAccountResourceStaticKeysUpdateCredential(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]any{cloudAccountResponse(*stored)})
 		case r.Method == http.MethodPost && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts", testNetworkID):
 			postCount++
-			var payload sdk.AWSCloudAccountRequest
+			var payload forward.CloudAccountRequest
 			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -423,7 +423,7 @@ func TestAccAWSCloudAccountResourceStaticKeysUpdateCredential(t *testing.T) {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			var payload sdk.AWSCloudAccountRequest
+			var payload forward.CloudAccountRequest
 			if err := json.Unmarshal(encoded, &payload); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -500,24 +500,24 @@ func TestBuildAWSCloudAccountRequestInstanceProfile(t *testing.T) {
 }
 
 func TestAccountRemovalDiagnostics(t *testing.T) {
-	existing := &sdk.CloudAccount{
+	existing := &forward.CloudAccount{
 		Name: "org-aws",
-		AssumeRoleInfos: []sdk.AWSAssumeRoleInfo{
+		AssumeRoleInfos: []forward.AWSAssumeRoleInfo{
 			{
 				AccountID:   "111111111111",
 				AccountName: "prod",
-				RoleArn:     "arn:aws:iam::111111111111:role/ForwardNetworksReadOnly",
+				RoleARN:     "arn:aws:iam::111111111111:role/ForwardNetworksReadOnly",
 			},
 			{
 				AccountName: "dev",
-				RoleArn:     "arn:aws-us-gov:iam::222222222222:role/ForwardNetworksReadOnly",
+				RoleARN:     "arn:aws-us-gov:iam::222222222222:role/ForwardNetworksReadOnly",
 			},
 		},
 	}
-	planned := []sdk.AWSAssumeRoleInfo{
+	planned := []forward.AWSAssumeRoleInfo{
 		{
 			AccountID: "111111111111",
-			RoleArn:   "arn:aws:iam::111111111111:role/ForwardNetworksReadOnly",
+			RoleARN:   "arn:aws:iam::111111111111:role/ForwardNetworksReadOnly",
 		},
 	}
 
@@ -595,10 +595,10 @@ resource "forward_aws_cloud_account" "org" {
 `, baseURL, testNetworkID, secret)
 }
 
-func awsCloudAccountRequestWithAccounts(accounts ...sdk.AWSAssumeRoleInfo) *sdk.AWSCloudAccountRequest {
+func awsCloudAccountRequestWithAccounts(accounts ...forward.AWSAssumeRoleInfo) *forward.CloudAccountRequest {
 	collect := true
 	useForward := true
-	return &sdk.AWSCloudAccountRequest{
+	return &forward.CloudAccountRequest{
 		Type:                          "AWS",
 		Name:                          "org-aws",
 		Collect:                       &collect,
@@ -608,7 +608,7 @@ func awsCloudAccountRequestWithAccounts(accounts ...sdk.AWSAssumeRoleInfo) *sdk.
 	}
 }
 
-func cloudAccountResponse(payload sdk.AWSCloudAccountRequest) map[string]any {
+func cloudAccountResponse(payload forward.CloudAccountRequest) map[string]any {
 	regions := map[string]map[string]int64{}
 	for region, instant := range payload.Regions {
 		regions[region] = map[string]int64{"testInstant": instant}

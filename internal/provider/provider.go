@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -17,7 +18,7 @@ import (
 	schemavalidator "github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/forwardnetworks/terraform-provider-forward/internal/sdk"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 )
 
 const (
@@ -34,7 +35,7 @@ var _ provider.Provider = &ForwardProvider{}
 // ForwardProviderData houses the configured client and contextual values
 // that resources and data sources will require.
 type ForwardProviderData struct {
-	Client    *sdk.Client
+	Client    *forward.Client
 	NetworkID string
 }
 
@@ -182,15 +183,20 @@ func (p *ForwardProvider) Configure(ctx context.Context, req provider.ConfigureR
 		return
 	}
 
-	client, err := sdk.NewClient(ctx, sdk.Config{
-		BaseURL:  baseURL,
-		Username: username,
-		Password: password,
-		Insecure: insecure,
+	client, err := forward.NewClient(forward.Config{
+		BaseURL:            baseURL,
+		Username:           username,
+		Password:           password,
+		InsecureSkipVerify: insecure,
+		NetworkID:          networkID,
 		UserAgent: fmt.Sprintf(
 			"terraform-provider-forward/%s",
 			p.version,
 		),
+		// A plan or apply that dies on one 502 from a load balancer is worse
+		// than one that waits a moment, and Terraform has no way to resume a
+		// half-finished operation.
+		Retry: forward.RetryPolicy{MaxAttempts: 3, Delay: 500 * time.Millisecond},
 	})
 	if err != nil {
 		resp.Diagnostics.AddError(

@@ -74,15 +74,15 @@ data "forward_snapshots" "recent" {
 
 Read-Only:
 
-- `creation_date_millis` (Number)
-- `favorited_at_millis` (Number)
+- `created_at` (String)
+- `favorited_at` (String)
 - `favorited_by` (String)
 - `favorited_by_user_id` (String)
 - `id` (String)
 - `is_draft` (Boolean)
 - `note` (String)
 - `parent_snapshot_id` (String)
-- `processed_at_millis` (Number)
+- `processed_at` (String)
 - `processing_trigger` (String)
-- `restored_at_millis` (Number)
+- `restored_at` (String)
 - `state` (String)

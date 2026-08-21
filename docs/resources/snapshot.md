@@ -28,8 +28,8 @@ Manage Forward Enterprise snapshots (capture, poll, and archive).
 
 ### Read-Only
 
-- `creation_date_millis` (Number) Snapshot creation timestamp (milliseconds).
+- `created_at` (String) Snapshot creation timestamp, as an RFC 3339 instant.
 - `id` (String) Snapshot identifier assigned by Forward Enterprise.
-- `processed_at_millis` (Number) Snapshot processed timestamp (milliseconds).
-- `restored_at_millis` (Number) Snapshot restored timestamp (milliseconds).
+- `processed_at` (String) Timestamp the snapshot finished processing, as an RFC 3339 instant.
+- `restored_at` (String) Timestamp the snapshot was restored, as an RFC 3339 instant.
 - `state` (String) Current snapshot state.

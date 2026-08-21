@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"github.com/forwardnetworks/terraform-provider-forward/internal/sdk"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 )
 
 var _ datasource.DataSource = &NqeQueryDataSource{}
@@ -164,7 +164,7 @@ func (d *NqeQueryDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 
-	result, err := d.providerData.Client.RunNQEQuery(ctx, networkID, stringOrEmpty(data.SnapshotID), reqBody)
+	result, _, err := d.providerData.Client.NQE.Run(ctx, networkID, stringOrEmpty(data.SnapshotID), reqBody)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Execute NQE Query",
@@ -174,11 +174,11 @@ func (d *NqeQueryDataSource) Read(ctx context.Context, req datasource.ReadReques
 	}
 
 	items := make([]attr.Value, 0, len(result.Items))
-	for _, raw := range result.Items {
-		encoded := json.RawMessage(raw)
-		if len(encoded) == 0 {
-			items = append(items, types.StringValue("{}"))
-			continue
+	for _, row := range result.Items {
+		encoded, err := json.Marshal(row)
+		if err != nil {
+			resp.Diagnostics.AddError("Unable to Encode NQE Row", err.Error())
+			return
 		}
 		items = append(items, types.StringValue(string(encoded)))
 	}
@@ -192,7 +192,7 @@ func (d *NqeQueryDataSource) Read(ctx context.Context, req datasource.ReadReques
 		Parameters:       data.Parameters,
 		Limit:            data.Limit,
 		Offset:           data.Offset,
-		ResultSnapshotID: types.StringValue(result.SnapshotID),
+		ResultSnapshotID: types.StringValue(string(result.SnapshotID)),
 		ItemsJSON:        types.ListNull(types.StringType),
 		TotalItems:       types.Int64Null(),
 	}
@@ -203,9 +203,10 @@ func (d *NqeQueryDataSource) Read(ctx context.Context, req datasource.ReadReques
 		state.ItemsJSON = types.ListValueMust(types.StringType, []attr.Value{})
 	}
 
-	if result.TotalNumItems != nil {
-		state.TotalItems = types.Int64Value(*result.TotalNumItems)
-	} else {
+	state.TotalItems = types.Int64Value(result.TotalNumItems)
+	if result.TotalNumItems == 0 {
+		// An appserver that omits the total still returned this page, and a
+		// count of zero alongside rows would be wrong.
 		state.TotalItems = types.Int64Value(int64(len(result.Items)))
 	}
 
@@ -218,22 +219,13 @@ func (d *NqeQueryDataSource) Read(ctx context.Context, req datasource.ReadReques
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func expandNqeRequest(ctx context.Context, data nqeQueryDataSourceModel) (sdk.NqeQueryRequest, diag.Diagnostics) {
+func expandNqeRequest(ctx context.Context, data nqeQueryDataSourceModel) (forward.NQEQueryRequest, diag.Diagnostics) {
 	var diags diag.Diagnostics
-	req := sdk.NqeQueryRequest{}
+	req := forward.NQEQueryRequest{}
 
-	if !data.Query.IsNull() && !data.Query.IsUnknown() {
-		query := data.Query.ValueString()
-		req.Query = &query
-	}
-	if !data.QueryID.IsNull() && !data.QueryID.IsUnknown() {
-		queryID := data.QueryID.ValueString()
-		req.QueryID = &queryID
-	}
-	if !data.CommitID.IsNull() && !data.CommitID.IsUnknown() {
-		commit := data.CommitID.ValueString()
-		req.CommitID = &commit
-	}
+	req.Query = stringOrEmpty(data.Query)
+	req.QueryID = stringOrEmpty(data.QueryID)
+	req.CommitID = stringOrEmpty(data.CommitID)
 
 	if !data.Parameters.IsNull() && !data.Parameters.IsUnknown() {
 		params := map[string]string{}
@@ -257,9 +249,9 @@ func expandNqeRequest(ctx context.Context, data nqeQueryDataSourceModel) (sdk.Nq
 		}
 	}
 
-	var limitPtr *int
+	var limitPtr *int32
 	if !data.Limit.IsNull() && !data.Limit.IsUnknown() {
-		val := int(data.Limit.ValueInt64())
+		val := int32(data.Limit.ValueInt64())
 		if val < 0 {
 			diags.AddAttributeError(
 				path.Root("limit"),
@@ -271,9 +263,9 @@ func expandNqeRequest(ctx context.Context, data nqeQueryDataSourceModel) (sdk.Nq
 		limitPtr = &val
 	}
 
-	var offsetPtr *int
+	var offsetPtr *int32
 	if !data.Offset.IsNull() && !data.Offset.IsUnknown() {
-		val := int(data.Offset.ValueInt64())
+		val := int32(data.Offset.ValueInt64())
 		if val < 0 {
 			diags.AddAttributeError(
 				path.Root("offset"),
@@ -286,7 +278,7 @@ func expandNqeRequest(ctx context.Context, data nqeQueryDataSourceModel) (sdk.Nq
 	}
 
 	if limitPtr != nil || offsetPtr != nil {
-		req.QueryOptions = &sdk.NqeQueryOptions{Limit: limitPtr, Offset: offsetPtr}
+		req.Options = &forward.NQEOptions{Limit: limitPtr, Offset: offsetPtr}
 	}
 
 	return req, diags

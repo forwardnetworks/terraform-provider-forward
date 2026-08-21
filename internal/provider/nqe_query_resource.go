@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/forwardnetworks/terraform-provider-forward/internal/sdk"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 )
 
 var _ resource.Resource = &NQEQueryResource{}
@@ -183,7 +183,7 @@ func (r *NQEQueryResource) ImportState(ctx context.Context, req resource.ImportS
 	resource.ImportStatePassthroughID(ctx, path.Root("query_id"), req, resp)
 }
 
-func (r *NQEQueryResource) lookupQuery(ctx context.Context, queryPath, repository string) (*sdk.NqeQuery, diag.Diagnostics) {
+func (r *NQEQueryResource) lookupQuery(ctx context.Context, queryPath, repository string) (*forward.NQEQuery, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if strings.TrimSpace(queryPath) == "" {
@@ -191,7 +191,7 @@ func (r *NQEQueryResource) lookupQuery(ctx context.Context, queryPath, repositor
 		return nil, diags
 	}
 
-	queries, err := r.providerData.Client.ListNQEQueries(ctx, "")
+	queries, _, err := r.providerData.Client.NQE.ListQueries(ctx, "")
 	if err != nil {
 		diags.AddError("Error listing NQE queries", err.Error())
 		return nil, diags

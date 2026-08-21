@@ -32,7 +32,7 @@ Manage Forward Enterprise intent checks against a specific snapshot.
 
 ### Read-Only
 
-- `execution_date_millis` (Number) Execution timestamp (milliseconds since epoch).
+- `executed_at` (String) Timestamp the check last ran, as an RFC 3339 instant.
 - `execution_duration_millis` (Number) Execution duration in milliseconds.
 - `id` (String) Identifier assigned by Forward Enterprise for the intent check.
 - `num_violations` (Number) Number of violations detected by the check.

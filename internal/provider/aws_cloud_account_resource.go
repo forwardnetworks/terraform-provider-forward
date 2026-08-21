@@ -24,7 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
-	"github.com/forwardnetworks/terraform-provider-forward/internal/sdk"
+	forward "github.com/forwardnetworks/forward-go-sdk"
 )
 
 const (
@@ -246,7 +246,7 @@ func (r *AWSCloudAccountResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
-	existing, err := r.providerData.Client.GetCloudAccount(ctx, networkID, plan.Name.ValueString())
+	existing, _, err := r.providerData.Client.CloudAccounts.Get(ctx, networkID, plan.Name.ValueString())
 	if err != nil && !isNotFoundError(err) {
 		resp.Diagnostics.AddError("Error checking Forward AWS cloud account", err.Error())
 		return
@@ -264,17 +264,17 @@ func (r *AWSCloudAccountResource) Create(ctx context.Context, req resource.Creat
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		if err := r.providerData.Client.UpdateCloudAccount(ctx, networkID, plan.Name.ValueString(), awsCloudAccountPatchRequest(body)); err != nil {
+		if _, _, err := r.providerData.Client.CloudAccounts.Update(ctx, networkID, plan.Name.ValueString(), awsCloudAccountPatchRequest(body)); err != nil {
 			resp.Diagnostics.AddError("Error updating existing Forward AWS cloud account", err.Error())
 			return
 		}
 		if mode == awsCredentialModeStaticKeys {
-			if err := r.providerData.Client.UpdateCloudAccountCredential(ctx, networkID, plan.Name.ValueString(), awsCloudAccountCredentialRequest(plan)); err != nil {
+			if _, err := r.providerData.Client.CloudAccounts.UpdateCredential(ctx, networkID, plan.Name.ValueString(), awsCloudAccountCredentialRequest(plan)); err != nil {
 				resp.Diagnostics.AddError("Error updating existing Forward AWS cloud account credentials", err.Error())
 				return
 			}
 		}
-	} else if err := r.providerData.Client.CreateCloudAccount(ctx, networkID, body); err != nil {
+	} else if _, _, err := r.providerData.Client.CloudAccounts.Create(ctx, networkID, body); err != nil {
 		resp.Diagnostics.AddError("Error creating Forward AWS cloud account", err.Error())
 		return
 	}
@@ -362,7 +362,7 @@ func (r *AWSCloudAccountResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	existing, err := r.providerData.Client.GetCloudAccount(ctx, networkID, plan.Name.ValueString())
+	existing, _, err := r.providerData.Client.CloudAccounts.Get(ctx, networkID, plan.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error checking Forward AWS cloud account", err.Error())
 		return
@@ -380,12 +380,12 @@ func (r *AWSCloudAccountResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	if err := r.providerData.Client.UpdateCloudAccount(ctx, networkID, plan.Name.ValueString(), awsCloudAccountPatchRequest(body)); err != nil {
+	if _, _, err := r.providerData.Client.CloudAccounts.Update(ctx, networkID, plan.Name.ValueString(), awsCloudAccountPatchRequest(body)); err != nil {
 		resp.Diagnostics.AddError("Error updating Forward AWS cloud account", err.Error())
 		return
 	}
 	if mode == awsCredentialModeStaticKeys {
-		if err := r.providerData.Client.UpdateCloudAccountCredential(ctx, networkID, plan.Name.ValueString(), awsCloudAccountCredentialRequest(plan)); err != nil {
+		if _, err := r.providerData.Client.CloudAccounts.UpdateCredential(ctx, networkID, plan.Name.ValueString(), awsCloudAccountCredentialRequest(plan)); err != nil {
 			resp.Diagnostics.AddError("Error updating Forward AWS cloud account credentials", err.Error())
 			return
 		}
@@ -419,7 +419,7 @@ func (r *AWSCloudAccountResource) Delete(ctx context.Context, req resource.Delet
 		return
 	}
 
-	if err := r.providerData.Client.DeleteCloudAccount(ctx, r.networkID(state.NetworkID), state.Name.ValueString()); err != nil && !isNotFoundError(err) {
+	if _, err := r.providerData.Client.CloudAccounts.Delete(ctx, r.networkID(state.NetworkID), state.Name.ValueString()); err != nil && !isNotFoundError(err) {
 		resp.Diagnostics.AddError("Error deleting Forward AWS cloud account", err.Error())
 	}
 }
@@ -451,7 +451,7 @@ func (r *AWSCloudAccountResource) readIntoState(ctx context.Context, state *awsC
 		return diags, nil
 	}
 
-	account, err := r.providerData.Client.GetCloudAccount(ctx, networkID, state.Name.ValueString())
+	account, _, err := r.providerData.Client.CloudAccounts.Get(ctx, networkID, state.Name.ValueString())
 	if err != nil {
 		return diags, err
 	}
@@ -479,23 +479,23 @@ func (r *AWSCloudAccountResource) readIntoState(ctx context.Context, state *awsC
 	return diags, nil
 }
 
-func buildAWSCloudAccountRequest(ctx context.Context, model awsCloudAccountResourceModel) (sdk.AWSCloudAccountRequest, diag.Diagnostics) {
+func buildAWSCloudAccountRequest(ctx context.Context, model awsCloudAccountResourceModel) (forward.CloudAccountRequest, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	regions := stringSet(model.Regions)
 	if len(regions) == 0 {
 		diags.AddAttributeError(path.Root("regions"), "Missing Regions", "At least one AWS region is required.")
-		return sdk.AWSCloudAccountRequest{}, diags
+		return forward.CloudAccountRequest{}, diags
 	}
 
 	assumeRoleInfos, infoDiags := expandAWSAssumeRoleInfos(model.AssumeRoleInfos)
 	diags.Append(infoDiags...)
 	if diags.HasError() {
-		return sdk.AWSCloudAccountRequest{}, diags
+		return forward.CloudAccountRequest{}, diags
 	}
 	if len(assumeRoleInfos) == 0 {
 		diags.AddAttributeError(path.Root("assume_role_infos"), "Missing AWS Accounts", "At least one assume_role_infos entry is required.")
-		return sdk.AWSCloudAccountRequest{}, diags
+		return forward.CloudAccountRequest{}, diags
 	}
 
 	regionProxyIDs := map[string]string{}
@@ -503,7 +503,7 @@ func buildAWSCloudAccountRequest(ctx context.Context, model awsCloudAccountResou
 		mapDiags := model.RegionToProxyServerID.ElementsAs(ctx, &regionProxyIDs, false)
 		diags.Append(mapDiags...)
 		if diags.HasError() {
-			return sdk.AWSCloudAccountRequest{}, diags
+			return forward.CloudAccountRequest{}, diags
 		}
 	}
 
@@ -518,11 +518,11 @@ func buildAWSCloudAccountRequest(ctx context.Context, model awsCloudAccountResou
 	mode, modeDiags := resolveAWSCredentialMode(model)
 	diags.Append(modeDiags...)
 	if diags.HasError() {
-		return sdk.AWSCloudAccountRequest{}, diags
+		return forward.CloudAccountRequest{}, diags
 	}
 	useForwardAccount = mode == awsCredentialModeForwardAssumeRole
 
-	request := sdk.AWSCloudAccountRequest{
+	request := forward.CloudAccountRequest{
 		Type:                          "AWS",
 		Name:                          strings.TrimSpace(model.Name.ValueString()),
 		Collect:                       &collect,
@@ -547,15 +547,15 @@ func buildAWSCloudAccountRequest(ctx context.Context, model awsCloudAccountResou
 	return request, diags
 }
 
-func awsCloudAccountPatchRequest(request sdk.AWSCloudAccountRequest) sdk.AWSCloudAccountRequest {
+func awsCloudAccountPatchRequest(request forward.CloudAccountRequest) forward.CloudAccountRequest {
 	request.UseForwardAccountToAssumeRole = nil
 	request.Username = ""
 	request.Password = ""
 	return request
 }
 
-func awsCloudAccountCredentialRequest(model awsCloudAccountResourceModel) sdk.AWSCloudAccountCredentialRequest {
-	return sdk.AWSCloudAccountCredentialRequest{
+func awsCloudAccountCredentialRequest(model awsCloudAccountResourceModel) forward.CloudAccountCredentialRequest {
+	return forward.CloudAccountCredentialRequest{
 		Type:     "AWS",
 		Username: strings.TrimSpace(attrStringValue(model.CollectorAccessKeyID)),
 		Password: attrStringValue(model.CollectorSecretAccessKey),
@@ -609,7 +609,7 @@ func resolveAWSCredentialMode(model awsCloudAccountResourceModel) (string, diag.
 	return mode, diags
 }
 
-func validateExistingAWSCredentialMode(existing *sdk.CloudAccount, desiredMode string) error {
+func validateExistingAWSCredentialMode(existing *forward.CloudAccount, desiredMode string) error {
 	if existing == nil || existing.UseForwardAccountToAssumeRole == nil {
 		return nil
 	}
@@ -621,7 +621,7 @@ func validateExistingAWSCredentialMode(existing *sdk.CloudAccount, desiredMode s
 	return nil
 }
 
-func accountRemovalDiagnostics(model awsCloudAccountResourceModel, existing *sdk.CloudAccount, planned []sdk.AWSAssumeRoleInfo) diag.Diagnostics {
+func accountRemovalDiagnostics(model awsCloudAccountResourceModel, existing *forward.CloudAccount, planned []forward.AWSAssumeRoleInfo) diag.Diagnostics {
 	var diags diag.Diagnostics
 	if existing == nil || (!model.AllowAccountRemovals.IsNull() && !model.AllowAccountRemovals.IsUnknown() && model.AllowAccountRemovals.ValueBool()) {
 		return diags
@@ -662,15 +662,15 @@ func accountRemovalDiagnostics(model awsCloudAccountResourceModel, existing *sdk
 	return diags
 }
 
-func awsAssumeRoleInfoAccountID(info sdk.AWSAssumeRoleInfo) string {
+func awsAssumeRoleInfoAccountID(info forward.AWSAssumeRoleInfo) string {
 	accountID := strings.TrimSpace(info.AccountID)
 	if accountID != "" {
 		return accountID
 	}
-	return accountIDFromRoleARN(info.RoleArn)
+	return accountIDFromRoleARN(info.RoleARN)
 }
 
-func awsAssumeRoleInfoLabel(info sdk.AWSAssumeRoleInfo) string {
+func awsAssumeRoleInfoLabel(info forward.AWSAssumeRoleInfo) string {
 	accountID := awsAssumeRoleInfoAccountID(info)
 	accountName := strings.TrimSpace(info.AccountName)
 	if accountName != "" && accountID != "" && accountName != accountID {
@@ -679,7 +679,7 @@ func awsAssumeRoleInfoLabel(info sdk.AWSAssumeRoleInfo) string {
 	if accountID != "" {
 		return accountID
 	}
-	return strings.TrimSpace(info.RoleArn)
+	return strings.TrimSpace(info.RoleARN)
 }
 
 func accountIDFromRoleARN(roleARN string) string {
@@ -690,7 +690,7 @@ func accountIDFromRoleARN(roleARN string) string {
 	return parts[4]
 }
 
-func credentialModeFromStateAndAPI(state awsCloudAccountResourceModel, account *sdk.CloudAccount) string {
+func credentialModeFromStateAndAPI(state awsCloudAccountResourceModel, account *forward.CloudAccount) string {
 	if account != nil && account.UseForwardAccountToAssumeRole != nil && *account.UseForwardAccountToAssumeRole {
 		return awsCredentialModeForwardAssumeRole
 	}
@@ -707,9 +707,9 @@ func credentialModeFromStateAndAPI(state awsCloudAccountResourceModel, account *
 	return awsCredentialModeForwardAssumeRole
 }
 
-func expandAWSAssumeRoleInfos(values []awsAssumeRoleInfoModel) ([]sdk.AWSAssumeRoleInfo, diag.Diagnostics) {
+func expandAWSAssumeRoleInfos(values []awsAssumeRoleInfoModel) ([]forward.AWSAssumeRoleInfo, diag.Diagnostics) {
 	var diags diag.Diagnostics
-	result := make([]sdk.AWSAssumeRoleInfo, 0, len(values))
+	result := make([]forward.AWSAssumeRoleInfo, 0, len(values))
 	seen := map[string]bool{}
 
 	for idx, value := range values {
@@ -732,10 +732,10 @@ func expandAWSAssumeRoleInfos(values []awsAssumeRoleInfoModel) ([]sdk.AWSAssumeR
 		if !value.Enabled.IsNull() && !value.Enabled.IsUnknown() {
 			enabled = value.Enabled.ValueBool()
 		}
-		result = append(result, sdk.AWSAssumeRoleInfo{
+		result = append(result, forward.AWSAssumeRoleInfo{
 			AccountID:   accountID,
 			AccountName: strings.TrimSpace(attrStringValue(value.AccountName)),
-			RoleArn:     roleArn,
+			RoleARN:     roleArn,
 			ExternalID:  strings.TrimSpace(attrStringValue(value.ExternalID)),
 			Enabled:     enabled,
 			ErrorMsg:    strings.TrimSpace(attrStringValue(value.ErrorMsg)),
@@ -749,13 +749,13 @@ func expandAWSAssumeRoleInfos(values []awsAssumeRoleInfoModel) ([]sdk.AWSAssumeR
 	return result, diags
 }
 
-func flattenAWSAssumeRoleInfos(values []sdk.AWSAssumeRoleInfo) []awsAssumeRoleInfoModel {
+func flattenAWSAssumeRoleInfos(values []forward.AWSAssumeRoleInfo) []awsAssumeRoleInfoModel {
 	result := make([]awsAssumeRoleInfoModel, 0, len(values))
 	for _, value := range values {
 		result = append(result, awsAssumeRoleInfoModel{
 			AccountID:   stringOrNull(value.AccountID),
 			AccountName: stringOrNull(value.AccountName),
-			RoleArn:     stringOrNull(value.RoleArn),
+			RoleArn:     stringOrNull(value.RoleARN),
 			ExternalID:  stringOrNull(value.ExternalID),
 			Enabled:     types.BoolValue(value.Enabled),
 			ErrorMsg:    stringOrNull(value.ErrorMsg),
@@ -780,7 +780,7 @@ func selectedRegionInstants(regions []string) map[string]int64 {
 	return result
 }
 
-func regionNames(regions map[string]sdk.Region) []string {
+func regionNames(regions map[string]forward.Region) []string {
 	result := make([]string, 0, len(regions))
 	for region := range regions {
 		if strings.TrimSpace(region) != "" {
@@ -865,7 +865,7 @@ func payloadJSONForState(ctx context.Context, state awsCloudAccountResourceModel
 		}
 	}
 	useForwardAccount := mode == awsCredentialModeForwardAssumeRole
-	request := sdk.AWSCloudAccountRequest{
+	request := forward.CloudAccountRequest{
 		Type:                          "AWS",
 		Name:                          strings.TrimSpace(attrStringValue(state.Name)),
 		Collect:                       &collect,
