@@ -216,7 +216,6 @@ func (p *ForwardProvider) Resources(ctx context.Context) []func() resource.Resou
 		NewIntentCheckResource,
 		NewNQEQueryResource,
 		NewSnapshotResource,
-		NewPredictedSnapshotResource,
 		NewAWSCloudAccountResource,
 		NewNQELibraryQueryResource,
 		NewNetworkResource,

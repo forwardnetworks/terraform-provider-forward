@@ -2,7 +2,7 @@
 
 This repository contains the Terraform provider for [Forward Networks](https://www.forwardnetworks.com). The provider is built with the [Terraform Plugin Framework](https://github.com/hashicorp/terraform-plugin-framework).
 
-The provider currently supports Forward Basic authentication, snapshot and NQE workflows, intent checks, path analysis, and Terraform-native AWS cloud account onboarding from AWS Organizations.
+The provider currently supports Forward Basic authentication, network and proxy management, AWS and Azure cloud account onboarding (including AWS Organizations), collector attachment, snapshot and NQE workflows, intent checks, path analysis, and an NQE library query resource for publishing queries to the org library.
 
 ## Building against the Forward Go SDK
 
