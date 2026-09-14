@@ -596,13 +596,12 @@ resource "forward_aws_cloud_account" "org" {
 }
 
 func awsCloudAccountRequestWithAccounts(accounts ...forward.AWSAssumeRoleInfo) *forward.CloudAccountRequest {
-	collect := true
 	useForward := true
 	return &forward.CloudAccountRequest{
 		Type:                          "AWS",
 		Name:                          "org-aws",
-		Collect:                       &collect,
-		Regions:                       map[string]int64{"us-east-1": 1, "us-west-2": 1},
+		Collect:                       true,
+		Regions:                       map[string]int{"us-east-1": 1, "us-west-2": 1},
 		AssumeRoleInfos:               accounts,
 		UseForwardAccountToAssumeRole: &useForward,
 	}
@@ -611,7 +610,7 @@ func awsCloudAccountRequestWithAccounts(accounts ...forward.AWSAssumeRoleInfo) *
 func cloudAccountResponse(payload forward.CloudAccountRequest) map[string]any {
 	regions := map[string]map[string]int64{}
 	for region, instant := range payload.Regions {
-		regions[region] = map[string]int64{"testInstant": instant}
+		regions[region] = map[string]int64{"testInstant": int64(instant)}
 	}
 	return map[string]any{
 		"type":                          "AWS",

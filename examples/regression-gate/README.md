@@ -7,7 +7,7 @@ be, and refuse to apply if the change breaks something that works today.
 terraform apply \
   -var network_id=... -var cloud_source=... \
   -var route_table=rtb-... -var destination=10.92.0.0/16 \
-  -var target_kind=TRANSIT_GATEWAY -var target_id=tgw-...
+  -var target_id=tgw-...
 ```
 
 ## It is a postcondition, not a check block
@@ -44,7 +44,7 @@ Two things are worth knowing:
 
 ## Predicting the real plan file
 
-This example restates the change as `cloud_changes_json`, which keeps it to one
+This example restates the change as `route_changes`, which keeps it to one
 command. To predict the actual `terraform plan` output instead, use
 `terraform_plan_json` — see `examples/predict-gate`. That needs two commands,
 unavoidably: a plan cannot contain a prediction of itself.

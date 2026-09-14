@@ -14,7 +14,6 @@ provider "forward" {
 variable "cloud_source" { type = string }
 variable "route_table" { type = string }
 variable "destination" { type = string }
-variable "target_kind" { type = string }
 variable "target_id" { type = string }
 
 # Predict the change against the collected baseline. The regression suite is
@@ -24,16 +23,12 @@ resource "forward_predicted_snapshot" "candidate" {
   source_name = var.cloud_source
   note        = "gate demo"
 
-  cloud_changes_json = jsonencode({
-    routeChanges = [merge(
-      {
-        routeTableId         = var.route_table
-        destinationCidrBlock = var.destination
-      },
-      # Stating no target removes the route.
-      var.target_id == "" ? {} : { target = { kind = var.target_kind, id = var.target_id } },
-    )]
-  })
+  route_changes = [{
+    route_table_id = var.route_table
+    destination    = var.destination
+    # Stating no target removes the route.
+    target = var.target_id == "" ? null : var.target_id
+  }]
 }
 
 # What the suite says about the network as it is today. A network is never

@@ -131,7 +131,7 @@ func (r *AzureCloudAccountResource) request(ctx context.Context, plan azureCloud
 	request := forward.CloudAccountRequest{
 		Type:     "AZURE",
 		Name:     plan.Name.ValueString(),
-		Collect:  boolPointer(plan.Collect),
+		Collect:  plan.Collect.ValueBool(),
 		ClientID: plan.ClientID.ValueString(),
 		// Forward carries the secret in "password" whatever the provider is,
 		// and requires it. clientSecret alone is refused outright.
@@ -144,14 +144,13 @@ func (r *AzureCloudAccountResource) request(ctx context.Context, plan azureCloud
 	// refuses the request without one. Zero means "never tested", which is
 	// true of a setup that has not run yet.
 	if len(subscriptions) != 0 {
-		request.TestInstants = make(map[string]int64, len(subscriptions))
+		request.TestInstants = make(map[string]int, len(subscriptions))
 		for _, subscription := range subscriptions {
 			request.TestInstants[subscription] = 0
 		}
 	}
 	if !plan.ProxyServerID.IsNull() && !plan.ProxyServerID.IsUnknown() {
-		proxy := plan.ProxyServerID.ValueString()
-		request.ProxyServerID = &proxy
+		request.ProxyServerID = plan.ProxyServerID.ValueString()
 	}
 	return request
 }

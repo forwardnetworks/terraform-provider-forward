@@ -5,7 +5,6 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -40,19 +40,29 @@ type PredictedSnapshotResource struct {
 
 // PredictedSnapshotResourceModel stores Terraform state.
 type PredictedSnapshotResourceModel struct {
-	ID                  types.String `tfsdk:"id"`
-	NetworkID           types.String `tfsdk:"network_id"`
-	SourceName          types.String `tfsdk:"source_name"`
-	BaseSnapshotID      types.String `tfsdk:"base_snapshot_id"`
-	TerraformPlanJSON   types.String `tfsdk:"terraform_plan_json"`
-	CloudChangesJSON    types.String `tfsdk:"cloud_changes_json"`
-	Note                types.String `tfsdk:"note"`
-	PollIntervalSeconds types.Int64  `tfsdk:"poll_interval_seconds"`
-	TimeoutSeconds      types.Int64  `tfsdk:"timeout_seconds"`
-	KeepChangeSet       types.Bool   `tfsdk:"keep_change_set"`
+	ID                  types.String       `tfsdk:"id"`
+	NetworkID           types.String       `tfsdk:"network_id"`
+	SourceName          types.String       `tfsdk:"source_name"`
+	BaseSnapshotID      types.String       `tfsdk:"base_snapshot_id"`
+	TerraformPlanJSON   types.String       `tfsdk:"terraform_plan_json"`
+	RouteChanges        []RouteChangeModel `tfsdk:"route_changes"`
+	Note                types.String       `tfsdk:"note"`
+	PollIntervalSeconds types.Int64        `tfsdk:"poll_interval_seconds"`
+	TimeoutSeconds      types.Int64        `tfsdk:"timeout_seconds"`
+	KeepChangeSet       types.Bool         `tfsdk:"keep_change_set"`
 
-	ChangeSetID types.String `tfsdk:"change_set_id"`
-	State       types.String `tfsdk:"state"`
+	ChangeSetID     types.String `tfsdk:"change_set_id"`
+	State           types.String `tfsdk:"state"`
+	ImportedObjects types.List   `tfsdk:"imported_objects"`
+	Unsupported     types.List   `tfsdk:"unsupported_resources"`
+}
+
+// RouteChangeModel is one route stated directly: a target adds or retargets the
+// route at destination, no target removes it.
+type RouteChangeModel struct {
+	RouteTableID types.String `tfsdk:"route_table_id"`
+	Destination  types.String `tfsdk:"destination"`
+	Target       types.String `tfsdk:"target"`
 }
 
 func NewPredictedSnapshotResource() resource.Resource {
@@ -100,15 +110,34 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 			},
 			"terraform_plan_json": schema.StringAttribute{
 				Optional: true,
-				MarkdownDescription: "Output of `terraform show -json`. Forward translates the plan into cloud " +
-					"changes and reports what it could not translate. Conflicts with `cloud_changes_json`.",
+				MarkdownDescription: "Output of `terraform show -json`. Forward translates the plan into " +
+					"cloud-object changes on the source's route tables and reports, in " +
+					"`unsupported_resources`, what it could not translate. Conflicts with `route_changes`.",
 				PlanModifiers: replace,
 			},
-			"cloud_changes_json": schema.StringAttribute{
+			"route_changes": schema.ListNestedAttribute{
 				Optional: true,
-				MarkdownDescription: "Cloud changes stated directly, as the JSON body of the cloud-changes " +
-					"endpoint. Conflicts with `terraform_plan_json`.",
-				PlanModifiers: replace,
+				MarkdownDescription: "Route changes stated directly, one per route: a `target` adds or retargets " +
+					"the route at `destination` in `route_table_id`; no `target` removes it. Conflicts with " +
+					"`terraform_plan_json`.",
+				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplace()},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"route_table_id": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "Route table the route lives in (e.g. `rtb-…`).",
+						},
+						"destination": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "Destination prefix, which names the route within its table.",
+						},
+						"target": schema.StringAttribute{
+							Optional: true,
+							MarkdownDescription: "Where the route points, as Forward's route table shows it " +
+								"(a gateway, NAT, TGW, peering or interface id). Omit to remove the route.",
+						},
+					},
+				},
 			},
 			"note": schema.StringAttribute{
 				Optional:            true,
@@ -144,6 +173,19 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 				Computed:            true,
 				MarkdownDescription: "Processing state of the predicted snapshot.",
 			},
+			"imported_objects": schema.ListAttribute{
+				ElementType:         types.StringType,
+				Computed:            true,
+				MarkdownDescription: "Cloud objects (route table ids) the plan staged changes on.",
+				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+			},
+			"unsupported_resources": schema.ListAttribute{
+				ElementType: types.StringType,
+				Computed:    true,
+				MarkdownDescription: "Resource addresses in the plan that Forward has no predictor for. They are " +
+					"not in the prediction; a plan made only of these is refused rather than predicted as no change.",
+				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+			},
 		},
 	}
 }
@@ -176,16 +218,15 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 	}
 	client := r.providerData.Client
 
-	plan := data.TerraformPlanJSON.ValueString()
-	changes := data.CloudChangesJSON.ValueString()
+	plan := strings.TrimSpace(data.TerraformPlanJSON.ValueString())
 	switch {
-	case plan != "" && changes != "":
+	case plan != "" && len(data.RouteChanges) != 0:
 		resp.Diagnostics.AddError("Conflicting Change Sources",
-			"Set exactly one of terraform_plan_json or cloud_changes_json; stating both leaves it ambiguous which change was predicted.")
+			"Set exactly one of terraform_plan_json or route_changes; stating both leaves it ambiguous which change was predicted.")
 		return
-	case plan == "" && changes == "":
+	case plan == "" && len(data.RouteChanges) == 0:
 		resp.Diagnostics.AddError("No Change Stated",
-			"Set one of terraform_plan_json or cloud_changes_json. Predicting no change would return the base snapshot under a new id.")
+			"Set one of terraform_plan_json or route_changes. Predicting no change would return the base snapshot under a new id.")
 		return
 	}
 
@@ -236,16 +277,33 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 	}
 
 	source := data.SourceName.ValueString()
+	var objects, unsupported []string
 	if plan != "" {
-		_, err = client.Predict.StageTerraformPlan(ctx, networkID, string(changeSet.ID), source, []byte(plan))
+		imported, _, err := client.Predict.ImportTerraformPlan(ctx, networkID, string(changeSet.ID), source, []byte(plan))
+		if err != nil {
+			fail("Change Not Staged", err)
+			return
+		}
+		for _, object := range imported.Applied {
+			objects = append(objects, object.ObjectID)
+		}
+		unsupported = imported.Unsupported
 	} else {
-		var parsed forward.CloudChanges
-		if err = unmarshalCloudChanges(changes, &parsed); err == nil {
-			_, err = client.Predict.StageCloudChanges(ctx, networkID, string(changeSet.ID), source, parsed)
+		objects, err = stageRouteChanges(ctx, client, networkID, string(changeSet.ID), source, data.RouteChanges)
+		if err != nil {
+			fail("Change Not Staged", err)
+			return
 		}
 	}
-	if err != nil {
-		fail("Change Not Staged", err)
+	data.ImportedObjects = listOfStrings(objects)
+	data.Unsupported = listOfStrings(unsupported)
+	if len(unsupported) != 0 {
+		resp.Diagnostics.AddWarning("Plan Partly Modelled",
+			fmt.Sprintf("Forward has no predictor for %s; the prediction does not include them.",
+				strings.Join(unsupported, ", ")))
+	}
+	if len(objects) == 0 {
+		fail("Nothing To Predict", fmt.Errorf("no resource in the plan maps onto a cloud object Forward can model"))
 		return
 	}
 	if _, err := client.Predict.Commit(ctx, networkID, string(changeSet.ID), note); err != nil {
@@ -328,21 +386,30 @@ func (r *PredictedSnapshotResource) Delete(ctx context.Context, req resource.Del
 	}
 }
 
-// unmarshalCloudChanges decodes the stated changes, refusing silently-empty
-// input: a body that parses to no changes at all would predict nothing and
-// report success.
-func unmarshalCloudChanges(raw string, out *forward.CloudChanges) error {
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	// Unknown fields are refused: a misspelled category would otherwise be
-	// dropped and the prediction would quietly be of a smaller change.
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(out); err != nil {
-		return fmt.Errorf("cloud_changes_json is not a valid cloud changes body: %w", err)
+// stageRouteChanges puts each stated route on the draft and returns the route
+// tables touched, in the order first seen.
+func stageRouteChanges(ctx context.Context, client *forward.Client, networkID, changeSetID, source string,
+	changes []RouteChangeModel) ([]string, error) {
+	var tables []string
+	seen := map[string]bool{}
+	for _, change := range changes {
+		table := strings.TrimSpace(change.RouteTableID.ValueString())
+		destination := strings.TrimSpace(change.Destination.ValueString())
+		target := strings.TrimSpace(change.Target.ValueString())
+		var err error
+		if target == "" {
+			_, err = client.Predict.RemoveRoute(ctx, networkID, changeSetID, source, table, destination)
+		} else {
+			_, err = client.Predict.AddRoute(ctx, networkID, changeSetID, source, table,
+				forward.CloudRoute{Destination: destination, Target: target, Status: "active", Origin: "CreateRoute"})
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s %s: %w", table, destination, err)
+		}
+		if !seen[table] {
+			seen[table] = true
+			tables = append(tables, table)
+		}
 	}
-	if len(out.RouteChanges) == 0 && len(out.SecurityRuleChanges) == 0 &&
-		len(out.TgwAssociationChanges) == 0 && len(out.TgwPropagationChanges) == 0 &&
-		len(out.VpnRouteChanges) == 0 {
-		return fmt.Errorf("cloud_changes_json states no changes")
-	}
-	return nil
+	return tables, nil
 }

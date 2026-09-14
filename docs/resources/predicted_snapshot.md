@@ -22,16 +22,30 @@ Predict the network as it would be after a cloud change, and expose the resultin
 ### Optional
 
 - `base_snapshot_id` (String) Snapshot to predict from. Defaults to the most recent *collected* snapshot, which is not always the most recent one: every prediction leaves a snapshot behind, and predicting from a prediction is refused.
-- `cloud_changes_json` (String) Cloud changes stated directly, as the JSON body of the cloud-changes endpoint. Conflicts with `terraform_plan_json`.
 - `keep_change_set` (Boolean) Keep the change set when this resource is destroyed. Off by default, so a prediction does not leave change sets behind on every apply.
 - `network_id` (String) Network identifier. Defaults to the provider's network.
 - `note` (String) Note recorded on the commit and the predicted snapshot.
 - `poll_interval_seconds` (Number) How often to poll while the prediction processes.
-- `terraform_plan_json` (String) Output of `terraform show -json`. Forward translates the plan into cloud changes and reports what it could not translate. Conflicts with `cloud_changes_json`.
+- `route_changes` (Attributes List) Route changes stated directly, one per route: a `target` adds or retargets the route at `destination` in `route_table_id`; no `target` removes it. Conflicts with `terraform_plan_json`. (see [below for nested schema](#nestedatt--route_changes))
+- `terraform_plan_json` (String) Output of `terraform show -json`. Forward translates the plan into cloud-object changes on the source's route tables and reports, in `unsupported_resources`, what it could not translate. Conflicts with `route_changes`.
 - `timeout_seconds` (Number) How long to wait for the prediction to finish processing.
 
 ### Read-Only
 
 - `change_set_id` (String) Change set the prediction was run from.
 - `id` (String) Predicted snapshot identifier. Pass this as `snapshot_id` to a data source.
+- `imported_objects` (List of String) Cloud objects (route table ids) the plan staged changes on.
 - `state` (String) Processing state of the predicted snapshot.
+- `unsupported_resources` (List of String) Resource addresses in the plan that Forward has no predictor for. They are not in the prediction; a plan made only of these is refused rather than predicted as no change.
+
+<a id="nestedatt--route_changes"></a>
+### Nested Schema for `route_changes`
+
+Required:
+
+- `destination` (String) Destination prefix, which names the route within its table.
+- `route_table_id` (String) Route table the route lives in (e.g. `rtb-…`).
+
+Optional:
+
+- `target` (String) Where the route points, as Forward's route table shows it (a gateway, NAT, TGW, peering or interface id). Omit to remove the route.

@@ -525,12 +525,12 @@ func buildAWSCloudAccountRequest(ctx context.Context, model awsCloudAccountResou
 	request := forward.CloudAccountRequest{
 		Type:                          "AWS",
 		Name:                          strings.TrimSpace(model.Name.ValueString()),
-		Collect:                       &collect,
+		Collect:                       collect,
 		Regions:                       selectedRegionInstants(regions),
 		RegionToProxyServerID:         regionProxyIDs,
 		AssumeRoleInfos:               assumeRoleInfos,
 		UseForwardAccountToAssumeRole: &useForwardAccount,
-		ProxyServerID:                 stringPointer(model.ProxyServerID),
+		ProxyServerID:                 attrStringValue(model.ProxyServerID),
 		Concurrency:                   int64Pointer(model.Concurrency),
 		ConnectionTimeoutSeconds:      int64Pointer(model.ConnectionTimeoutSeconds),
 		RequestTimeoutSeconds:         int64Pointer(model.RequestTimeoutSeconds),
@@ -767,10 +767,10 @@ func flattenAWSAssumeRoleInfos(values []forward.AWSAssumeRoleInfo) []awsAssumeRo
 	return result
 }
 
-func selectedRegionInstants(regions []string) map[string]int64 {
+func selectedRegionInstants(regions []string) map[string]int {
 	sort.Strings(regions)
-	now := time.Now().UnixMilli()
-	result := make(map[string]int64, len(regions))
+	now := int(time.Now().UnixMilli())
+	result := make(map[string]int, len(regions))
 	for _, region := range regions {
 		region = strings.TrimSpace(region)
 		if region != "" {
@@ -868,8 +868,8 @@ func payloadJSONForState(ctx context.Context, state awsCloudAccountResourceModel
 	request := forward.CloudAccountRequest{
 		Type:                          "AWS",
 		Name:                          strings.TrimSpace(attrStringValue(state.Name)),
-		Collect:                       &collect,
-		ProxyServerID:                 stringPointer(state.ProxyServerID),
+		Collect:                       collect,
+		ProxyServerID:                 attrStringValue(state.ProxyServerID),
 		Regions:                       selectedRegionInstants(stringSet(state.Regions)),
 		RegionToProxyServerID:         regionToProxy,
 		UseForwardAccountToAssumeRole: &useForwardAccount,

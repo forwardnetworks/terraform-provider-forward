@@ -1,3 +1,12 @@
+## Unreleased
+
+BREAKING CHANGES:
+- `forward_predicted_snapshot` now stages changes through Forward's cloud-object change-set routes (Cloud Editing Framework). `cloud_changes_json` is gone; state a change directly with the new `route_changes` list (one entry per route: `route_table_id`, `destination`, optional `target` — omit it to remove the route) or keep passing `terraform_plan_json`.
+- The provider now builds against the unified `forward-go-sdk` (the Skyforge line plus this provider's additions); `CloudAccountRequest` fields are plain values rather than pointers.
+
+IMPROVEMENTS:
+- `forward_predicted_snapshot` exposes `imported_objects` (the route tables the plan touched) and `unsupported_resources` (plan resources Forward has no predictor for), and warns when a plan is only partly modelled instead of predicting it as a smaller change.
+
 ## 0.5.1
 
 IMPROVEMENTS:

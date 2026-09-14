@@ -40,13 +40,11 @@ resource "forward_predicted_snapshot" "candidate" {
   base_snapshot_id = forward_snapshot.baseline.id
   note             = "predict before apply"
 
-  cloud_changes_json = jsonencode({
-    routeChanges = [{
-      routeTableId         = var.route_table_id
-      destinationCidrBlock = var.destination_cidr
-      target               = { kind = "TRANSIT_GATEWAY", id = var.transit_gateway_id }
-    }]
-  })
+  route_changes = [{
+    route_table_id = var.route_table_id
+    destination    = var.destination_cidr
+    target         = var.transit_gateway_id
+  }]
 }
 
 # 3. PREDICT GATE. Reads the network as it would be. Failing here stops the run
