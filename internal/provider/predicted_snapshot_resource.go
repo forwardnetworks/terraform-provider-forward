@@ -401,7 +401,7 @@ func stageRouteChanges(ctx context.Context, client *forward.Client, networkID, c
 			_, err = client.Predict.RemoveRoute(ctx, networkID, changeSetID, source, table, destination)
 		} else {
 			_, err = client.Predict.AddRoute(ctx, networkID, changeSetID, source, table,
-				forward.CloudRoute{Destination: destination, Target: target, Status: "active", Origin: "CreateRoute"})
+				forward.CloudRoute{Destination: destination, Target: target, Status: "active", Propagated: "no", Origin: ""})
 		}
 		if err != nil {
 			return nil, fmt.Errorf("%s %s: %w", table, destination, err)
