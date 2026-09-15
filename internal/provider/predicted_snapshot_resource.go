@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -55,6 +56,15 @@ type PredictedSnapshotResourceModel struct {
 	State           types.String `tfsdk:"state"`
 	ImportedObjects types.List   `tfsdk:"imported_objects"`
 	Unsupported     types.List   `tfsdk:"unsupported_resources"`
+	StagedChanges   types.String `tfsdk:"staged_changes_json"`
+}
+
+// StagedObject is one imported object's diff, as staged_changes_json carries it: the collected rows with the
+// change marked on each, in Forward's DiffEntry shape (a = collected, b = staged).
+type StagedObject struct {
+	Type   string                   `json:"type"`
+	Routes []forward.RouteDiffEntry `json:"routes,omitempty"`
+	Rules  []forward.RuleDiffEntry  `json:"rules,omitempty"`
 }
 
 // RouteChangeModel is one route stated directly: a target adds or retargets the
@@ -186,6 +196,14 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 					"not in the prediction; a plan made only of these is refused rather than predicted as no change.",
 				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 			},
+			"staged_changes_json": schema.StringAttribute{
+				Computed: true,
+				MarkdownDescription: "What was staged on each imported object, as Forward models it: a JSON object " +
+					"keyed by object id, each `{type, routes|rules}` with the collected rows marked UNCHANGED, " +
+					"ADDED, MODIFIED or DELETED (`a` collected, `b` staged). For a page or a report; " +
+					"`jsondecode()` it.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
 		},
 	}
 }
@@ -297,6 +315,12 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 	}
 	data.ImportedObjects = listOfStrings(objects)
 	data.Unsupported = listOfStrings(unsupported)
+	staged, err := stagedChanges(ctx, client, networkID, string(changeSet.ID), source, objects)
+	if err != nil {
+		fail("Staged Changes Not Read", err)
+		return
+	}
+	data.StagedChanges = types.StringValue(staged)
 	if len(unsupported) != 0 {
 		resp.Diagnostics.AddWarning("Plan Partly Modelled",
 			fmt.Sprintf("Forward has no predictor for %s; the prediction does not include them.",
@@ -384,6 +408,33 @@ func (r *PredictedSnapshotResource) Delete(ctx context.Context, req resource.Del
 			fmt.Sprintf("The predicted snapshot is gone from state but change set %s remains: %s",
 				data.ChangeSetID.ValueString(), err))
 	}
+}
+
+// stagedChanges reads each imported object's diff and encodes them as staged_changes_json. An object's kind is
+// read off its id, which is how AWS names them: sg- for a security group, anything else a route table.
+func stagedChanges(ctx context.Context, client *forward.Client, networkID, changeSetID, source string,
+	objects []string) (string, error) {
+	staged := map[string]StagedObject{}
+	for _, object := range objects {
+		if strings.HasPrefix(object, "sg-") {
+			diff, _, err := client.Predict.SecurityGroupDiff(ctx, networkID, changeSetID, source, object)
+			if err != nil {
+				return "", fmt.Errorf("%s: %w", object, err)
+			}
+			staged[object] = StagedObject{Type: forward.CloudObjectSecurityGroup, Rules: diff.Entries}
+			continue
+		}
+		diff, _, err := client.Predict.RouteTableDiff(ctx, networkID, changeSetID, source, object)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", object, err)
+		}
+		staged[object] = StagedObject{Type: forward.CloudObjectRouteTable, Routes: diff.Entries}
+	}
+	encoded, err := json.Marshal(staged)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
 }
 
 // stageRouteChanges puts each stated route on the draft and returns the route

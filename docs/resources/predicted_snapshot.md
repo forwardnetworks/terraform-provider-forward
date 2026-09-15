@@ -36,6 +36,7 @@ Predict the network as it would be after a cloud change, and expose the resultin
 - `id` (String) Predicted snapshot identifier. Pass this as `snapshot_id` to a data source.
 - `imported_objects` (List of String) Cloud objects (route table and security group ids) the plan staged changes on.
 - `state` (String) Processing state of the predicted snapshot.
+- `staged_changes_json` (String) What was staged on each imported object, as Forward models it: a JSON object keyed by object id, each `{type, routes|rules}` with the collected rows marked UNCHANGED, ADDED, MODIFIED or DELETED (`a` collected, `b` staged). For a page or a report; `jsondecode()` it.
 - `unsupported_resources` (List of String) Resource addresses in the plan that Forward has no predictor for. They are not in the prediction; a plan made only of these is refused rather than predicted as no change.
 
 <a id="nestedatt--route_changes"></a>
