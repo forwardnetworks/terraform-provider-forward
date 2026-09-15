@@ -27,14 +27,14 @@ Predict the network as it would be after a cloud change, and expose the resultin
 - `note` (String) Note recorded on the commit and the predicted snapshot.
 - `poll_interval_seconds` (Number) How often to poll while the prediction processes.
 - `route_changes` (Attributes List) Route changes stated directly, one per route: a `target` adds or retargets the route at `destination` in `route_table_id`; no `target` removes it. Conflicts with `terraform_plan_json`. (see [below for nested schema](#nestedatt--route_changes))
-- `terraform_plan_json` (String) Output of `terraform show -json`. Forward translates the plan into cloud-object changes on the source's route tables and reports, in `unsupported_resources`, what it could not translate. Conflicts with `route_changes`.
+- `terraform_plan_json` (String) Output of `terraform show -json`. Forward translates the plan into cloud-object changes on the source's route tables and security groups and reports, in `unsupported_resources`, what it could not translate. Conflicts with `route_changes`.
 - `timeout_seconds` (Number) How long to wait for the prediction to finish processing.
 
 ### Read-Only
 
 - `change_set_id` (String) Change set the prediction was run from.
 - `id` (String) Predicted snapshot identifier. Pass this as `snapshot_id` to a data source.
-- `imported_objects` (List of String) Cloud objects (route table ids) the plan staged changes on.
+- `imported_objects` (List of String) Cloud objects (route table and security group ids) the plan staged changes on.
 - `state` (String) Processing state of the predicted snapshot.
 - `unsupported_resources` (List of String) Resource addresses in the plan that Forward has no predictor for. They are not in the prediction; a plan made only of these is refused rather than predicted as no change.
 

@@ -111,7 +111,7 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 			"terraform_plan_json": schema.StringAttribute{
 				Optional: true,
 				MarkdownDescription: "Output of `terraform show -json`. Forward translates the plan into " +
-					"cloud-object changes on the source's route tables and reports, in " +
+					"cloud-object changes on the source's route tables and security groups and reports, in " +
 					"`unsupported_resources`, what it could not translate. Conflicts with `route_changes`.",
 				PlanModifiers: replace,
 			},
@@ -176,7 +176,7 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 			"imported_objects": schema.ListAttribute{
 				ElementType:         types.StringType,
 				Computed:            true,
-				MarkdownDescription: "Cloud objects (route table ids) the plan staged changes on.",
+				MarkdownDescription: "Cloud objects (route table and security group ids) the plan staged changes on.",
 				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 			},
 			"unsupported_resources": schema.ListAttribute{

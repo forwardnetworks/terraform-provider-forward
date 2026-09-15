@@ -5,7 +5,7 @@ BREAKING CHANGES:
 - The provider now builds against the unified `forward-go-sdk` (the Skyforge line plus this provider's additions); `CloudAccountRequest` fields are plain values rather than pointers.
 
 IMPROVEMENTS:
-- `forward_predicted_snapshot` exposes `imported_objects` (the route tables the plan touched) and `unsupported_resources` (plan resources Forward has no predictor for), and warns when a plan is only partly modelled instead of predicting it as a smaller change.
+- `forward_predicted_snapshot` exposes `imported_objects` (the route tables and security groups the plan touched) and `unsupported_resources` (plan resources Forward has no predictor for), and warns when a plan is only partly modelled instead of predicting it as a smaller change.
 
 ## 0.5.1
 
