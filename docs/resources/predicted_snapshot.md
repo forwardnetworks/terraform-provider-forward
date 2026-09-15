@@ -22,6 +22,7 @@ Predict the network as it would be after a cloud change, and expose the resultin
 ### Optional
 
 - `base_snapshot_id` (String) Snapshot to predict from. Defaults to the most recent *collected* snapshot, which is not always the most recent one: every prediction leaves a snapshot behind, and predicting from a prediction is refused.
+- `firewall_rules` (Attributes List) Security rules to stage on classic firewalls, in Forward's rule model: the on-prem half of a hybrid change. Staged on the same change set as the cloud change, so one prediction covers both sides. May stand alone. (see [below for nested schema](#nestedatt--firewall_rules))
 - `keep_change_set` (Boolean) Keep the change set when this resource is destroyed. Off by default, so a prediction does not leave change sets behind on every apply.
 - `network_id` (String) Network identifier. Defaults to the provider's network.
 - `note` (String) Note recorded on the commit and the predicted snapshot.
@@ -33,11 +34,33 @@ Predict the network as it would be after a cloud change, and expose the resultin
 ### Read-Only
 
 - `change_set_id` (String) Change set the prediction was run from.
+- `firewall_changes_json` (String) JSON object of device name to the rulebase diff rows the change set alters (Forward's DiffEntry shape, a = collected, b = staged), for the firewall_rules staged.
 - `id` (String) Predicted snapshot identifier. Pass this as `snapshot_id` to a data source.
 - `imported_objects` (List of String) Cloud objects (route table and security group ids) the plan staged changes on.
-- `state` (String) Processing state of the predicted snapshot.
 - `staged_changes_json` (String) What was staged on each imported object, as Forward models it: a JSON object keyed by object id, each `{type, routes|rules}` with the collected rows marked UNCHANGED, ADDED, MODIFIED or DELETED (`a` collected, `b` staged). For a page or a report; `jsondecode()` it.
+- `state` (String) Processing state of the predicted snapshot.
 - `unsupported_resources` (List of String) Resource addresses in the plan that Forward has no predictor for. They are not in the prediction; a plan made only of these is refused rather than predicted as no change.
+
+<a id="nestedatt--firewall_rules"></a>
+### Nested Schema for `firewall_rules`
+
+Required:
+
+- `action` (String) `PERMIT` or `DENY`.
+- `applications` (List of String) Vendor-predefined application names (`postgres`, `ssh`, ...); services are their defaults.
+- `destination_subnets` (List of String) CIDRs.
+- `destination_zones` (List of String)
+- `device` (String) Forward device name of the firewall.
+- `name` (String) Rule name.
+- `source_subnets` (List of String) CIDRs.
+- `source_zones` (List of String)
+
+Optional:
+
+- `after` (String) Name of the existing rule this one follows, resolved to its id on the device; an alternative to `predecessor`.
+- `description` (String)
+- `predecessor` (String) Id of the existing rule this one follows; unset puts it at the top.
+
 
 <a id="nestedatt--route_changes"></a>
 ### Nested Schema for `route_changes`

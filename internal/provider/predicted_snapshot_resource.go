@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -41,22 +42,24 @@ type PredictedSnapshotResource struct {
 
 // PredictedSnapshotResourceModel stores Terraform state.
 type PredictedSnapshotResourceModel struct {
-	ID                  types.String       `tfsdk:"id"`
-	NetworkID           types.String       `tfsdk:"network_id"`
-	SourceName          types.String       `tfsdk:"source_name"`
-	BaseSnapshotID      types.String       `tfsdk:"base_snapshot_id"`
-	TerraformPlanJSON   types.String       `tfsdk:"terraform_plan_json"`
-	RouteChanges        []RouteChangeModel `tfsdk:"route_changes"`
-	Note                types.String       `tfsdk:"note"`
-	PollIntervalSeconds types.Int64        `tfsdk:"poll_interval_seconds"`
-	TimeoutSeconds      types.Int64        `tfsdk:"timeout_seconds"`
-	KeepChangeSet       types.Bool         `tfsdk:"keep_change_set"`
+	ID                  types.String        `tfsdk:"id"`
+	NetworkID           types.String        `tfsdk:"network_id"`
+	SourceName          types.String        `tfsdk:"source_name"`
+	BaseSnapshotID      types.String        `tfsdk:"base_snapshot_id"`
+	TerraformPlanJSON   types.String        `tfsdk:"terraform_plan_json"`
+	RouteChanges        []RouteChangeModel  `tfsdk:"route_changes"`
+	FirewallRules       []FirewallRuleModel `tfsdk:"firewall_rules"`
+	Note                types.String        `tfsdk:"note"`
+	PollIntervalSeconds types.Int64         `tfsdk:"poll_interval_seconds"`
+	TimeoutSeconds      types.Int64         `tfsdk:"timeout_seconds"`
+	KeepChangeSet       types.Bool          `tfsdk:"keep_change_set"`
 
 	ChangeSetID     types.String `tfsdk:"change_set_id"`
 	State           types.String `tfsdk:"state"`
 	ImportedObjects types.List   `tfsdk:"imported_objects"`
 	Unsupported     types.List   `tfsdk:"unsupported_resources"`
 	StagedChanges   types.String `tfsdk:"staged_changes_json"`
+	FirewallChanges types.String `tfsdk:"firewall_changes_json"`
 }
 
 // StagedObject is one imported object's diff, as staged_changes_json carries it: the collected rows with the
@@ -65,6 +68,23 @@ type StagedObject struct {
 	Type   string                   `json:"type"`
 	Routes []forward.RouteDiffEntry `json:"routes,omitempty"`
 	Rules  []forward.RuleDiffEntry  `json:"rules,omitempty"`
+}
+
+// FirewallRuleModel is one security rule to stage on a classic firewall, in Forward's rule model: the on-prem
+// half of a hybrid change. Applications are the vendor's predefined names; services default to those
+// applications' defaults.
+type FirewallRuleModel struct {
+	Device             types.String `tfsdk:"device"`
+	Name               types.String `tfsdk:"name"`
+	Description        types.String `tfsdk:"description"`
+	Action             types.String `tfsdk:"action"`
+	SourceZones        types.List   `tfsdk:"source_zones"`
+	DestinationZones   types.List   `tfsdk:"destination_zones"`
+	SourceSubnets      types.List   `tfsdk:"source_subnets"`
+	DestinationSubnets types.List   `tfsdk:"destination_subnets"`
+	Applications       types.List   `tfsdk:"applications"`
+	Predecessor        types.String `tfsdk:"predecessor"`
+	After              types.String `tfsdk:"after"`
 }
 
 // RouteChangeModel is one route stated directly: a target adds or retargets the
@@ -117,6 +137,31 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 					"which is not always the most recent one: every prediction leaves a snapshot behind, and " +
 					"predicting from a prediction is refused.",
 				PlanModifiers: replace,
+			},
+			"firewall_rules": schema.ListNestedAttribute{
+				Optional: true,
+				MarkdownDescription: "Security rules to stage on classic firewalls, in Forward's rule model: the " +
+					"on-prem half of a hybrid change. Staged on the same change set as the cloud change, so one " +
+					"prediction covers both sides. May stand alone.",
+				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplace()},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"device":              schema.StringAttribute{Required: true, MarkdownDescription: "Forward device name of the firewall."},
+						"name":                schema.StringAttribute{Required: true, MarkdownDescription: "Rule name."},
+						"description":         schema.StringAttribute{Optional: true},
+						"action":              schema.StringAttribute{Required: true, MarkdownDescription: "`PERMIT` or `DENY`."},
+						"source_zones":        schema.ListAttribute{ElementType: types.StringType, Required: true},
+						"destination_zones":   schema.ListAttribute{ElementType: types.StringType, Required: true},
+						"source_subnets":      schema.ListAttribute{ElementType: types.StringType, Required: true, MarkdownDescription: "CIDRs."},
+						"destination_subnets": schema.ListAttribute{ElementType: types.StringType, Required: true, MarkdownDescription: "CIDRs."},
+						"applications": schema.ListAttribute{ElementType: types.StringType, Required: true,
+							MarkdownDescription: "Vendor-predefined application names (`postgres`, `ssh`, ...); services are their defaults."},
+						"predecessor": schema.StringAttribute{Optional: true,
+							MarkdownDescription: "Id of the existing rule this one follows; unset puts it at the top."},
+						"after": schema.StringAttribute{Optional: true,
+							MarkdownDescription: "Name of the existing rule this one follows, resolved to its id on the device; an alternative to `predecessor`."},
+					},
+				},
 			},
 			"terraform_plan_json": schema.StringAttribute{
 				Optional: true,
@@ -204,6 +249,12 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 					"`jsondecode()` it.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
+			"firewall_changes_json": schema.StringAttribute{
+				Computed: true,
+				MarkdownDescription: "JSON object of device name to the rulebase diff rows the change set alters " +
+					"(Forward's DiffEntry shape, a = collected, b = staged), for the firewall_rules staged.",
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
 		},
 	}
 }
@@ -237,14 +288,19 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 	client := r.providerData.Client
 
 	plan := strings.TrimSpace(data.TerraformPlanJSON.ValueString())
+	firewallRules, diags := firewallRules(ctx, data.FirewallRules)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	switch {
 	case plan != "" && len(data.RouteChanges) != 0:
 		resp.Diagnostics.AddError("Conflicting Change Sources",
 			"Set exactly one of terraform_plan_json or route_changes; stating both leaves it ambiguous which change was predicted.")
 		return
-	case plan == "" && len(data.RouteChanges) == 0:
+	case plan == "" && len(data.RouteChanges) == 0 && len(firewallRules) == 0:
 		resp.Diagnostics.AddError("No Change Stated",
-			"Set one of terraform_plan_json or route_changes. Predicting no change would return the base snapshot under a new id.")
+			"Set one of terraform_plan_json, route_changes or firewall_rules. Predicting no change would return the base snapshot under a new id.")
 		return
 	}
 
@@ -306,10 +362,27 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 			objects = append(objects, object.ObjectID)
 		}
 		unsupported = imported.Unsupported
-	} else {
+	} else if len(data.RouteChanges) != 0 {
 		objects, err = stageRouteChanges(ctx, client, networkID, string(changeSet.ID), source, data.RouteChanges)
 		if err != nil {
 			fail("Change Not Staged", err)
+			return
+		}
+	}
+	// Firewall rules are staged beside the cloud change, on the same change set: a hybrid change is one
+	// prediction, not one per side.
+	for _, staged := range firewallRules {
+		if staged.after != "" {
+			id, err := ruleIDByName(ctx, client, networkID, string(changeSet.ID), staged.device, staged.after)
+			if err != nil {
+				fail("Firewall Rule Not Staged", fmt.Errorf("%s: %w", staged.device, err))
+				return
+			}
+			staged.rule.Predecessor = id
+		}
+		if _, err := client.Predict.AddSecurityRule(ctx, networkID, string(changeSet.ID), staged.device,
+			forward.FirewallScopeLocal, forward.FirewallRulebasePrimary, staged.rule); err != nil {
+			fail("Firewall Rule Not Staged", fmt.Errorf("%s: %w", staged.device, err))
 			return
 		}
 	}
@@ -321,12 +394,18 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 		return
 	}
 	data.StagedChanges = types.StringValue(staged)
+	firewallChanges, err := firewallChanges(ctx, client, networkID, string(changeSet.ID), firewallRules)
+	if err != nil {
+		fail("Firewall Changes Not Read", err)
+		return
+	}
+	data.FirewallChanges = types.StringValue(firewallChanges)
 	if len(unsupported) != 0 {
 		resp.Diagnostics.AddWarning("Plan Partly Modelled",
 			fmt.Sprintf("Forward has no predictor for %s; the prediction does not include them.",
 				strings.Join(unsupported, ", ")))
 	}
-	if len(objects) == 0 {
+	if len(objects) == 0 && len(firewallRules) == 0 {
 		fail("Nothing To Predict", fmt.Errorf("no resource in the plan maps onto a cloud object Forward can model"))
 		return
 	}
@@ -463,4 +542,98 @@ func stageRouteChanges(ctx context.Context, client *forward.Client, networkID, c
 		}
 	}
 	return tables, nil
+}
+
+// firewallChanges reads each staged device's rulebase diff and keeps the rows the change set alters, as JSON
+// keyed by device: what the page shows beside the cloud objects' diffs.
+func firewallChanges(ctx context.Context, client *forward.Client, networkID, changeSetID string, staged []stagedFirewallRule) (string, error) {
+	changes := map[string][]forward.SecurityRuleDiffEntry{}
+	for _, rule := range staged {
+		if _, seen := changes[rule.device]; seen {
+			continue
+		}
+		diff, _, err := client.Predict.SecurityRulesDiff(ctx, networkID, changeSetID, rule.device)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", rule.device, err)
+		}
+		rows := []forward.SecurityRuleDiffEntry{}
+		for _, entry := range diff.Entries {
+			if entry.DiffType != "UNCHANGED" {
+				rows = append(rows, entry)
+			}
+		}
+		changes[rule.device] = rows
+	}
+	encoded, err := json.Marshal(changes)
+	return string(encoded), err
+}
+
+// stagedFirewallRule is one firewall_rules entry translated into Forward's rule model.
+type stagedFirewallRule struct {
+	device string
+	after  string
+	rule   forward.NewSecurityRule
+}
+
+// ruleIDByName finds the id of the device's rule with that name in its editable rulebase, as the change
+// set currently sees it.
+func ruleIDByName(ctx context.Context, client *forward.Client, networkID, changeSetID, device, name string) (string, error) {
+	diff, _, err := client.Predict.SecurityRulesDiff(ctx, networkID, changeSetID, device)
+	if err != nil {
+		return "", err
+	}
+	for _, entry := range diff.Entries {
+		rule := entry.B
+		if rule == nil {
+			rule = entry.A
+		}
+		if rule != nil && rule.ScopeID == forward.FirewallScopeLocal && rule.Definition.Name == name {
+			return rule.Definition.ID, nil
+		}
+	}
+	return "", fmt.Errorf("no rule named %q in the device's local rulebase", name)
+}
+
+func firewallRules(ctx context.Context, models []FirewallRuleModel) ([]stagedFirewallRule, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	out := make([]stagedFirewallRule, 0, len(models))
+	strs := func(l types.List) []string {
+		var v []string
+		diags.Append(l.ElementsAs(ctx, &v, false)...)
+		return v
+	}
+	predefined := func(names []string) []forward.SecurityObjectID {
+		ids := make([]forward.SecurityObjectID, 0, len(names))
+		for _, n := range names {
+			ids = append(ids, forward.Predefined(n))
+		}
+		return ids
+	}
+	for _, m := range models {
+		action := strings.ToUpper(m.Action.ValueString())
+		if action != "PERMIT" && action != "DENY" {
+			diags.AddError("Bad Firewall Rule", fmt.Sprintf("%s: action must be PERMIT or DENY, not %q", m.Name.ValueString(), m.Action.ValueString()))
+		}
+		out = append(out, stagedFirewallRule{
+			device: m.Device.ValueString(),
+			after:  m.After.ValueString(),
+			rule: forward.NewSecurityRule{
+				Predecessor: m.Predecessor.ValueString(),
+				Definition: forward.SecurityRuleDefinition{
+					Name:                 m.Name.ValueString(),
+					Description:          m.Description.ValueString(),
+					Enabled:              true,
+					Action:               action,
+					SourceZones:          strs(m.SourceZones),
+					DestinationZones:     strs(m.DestinationZones),
+					SourceAddresses:      forward.AddressSpecification{Subnets: strs(m.SourceSubnets)},
+					DestinationAddresses: forward.AddressSpecification{Subnets: strs(m.DestinationSubnets)},
+					SourceUsers:          forward.ObjectSpecification{Objects: predefined([]string{"any"})},
+					Applications:         forward.ObjectSpecification{Objects: predefined(strs(m.Applications))},
+					Services:             forward.ServiceSpecification{UseApplicationDefaults: true},
+				},
+			},
+		})
+	}
+	return out, diags
 }
