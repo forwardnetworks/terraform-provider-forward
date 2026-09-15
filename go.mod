@@ -80,4 +80,6 @@ require (
 	google.golang.org/protobuf v1.36.9 // indirect
 )
 
+// The cloud-predict SDK additions live on Skyforge (skyforge/forward-go-sdk, branch cloud-predict-cef, 96203f1)
+// until they are merged and mirrored to GitHub, where this module path resolves; re-pin to that pseudo-version then.
 replace github.com/forwardnetworks/forward-go-sdk => ../forward-go-sdk
