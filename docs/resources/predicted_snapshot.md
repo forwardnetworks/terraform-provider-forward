@@ -22,6 +22,7 @@ Predict the network as it would be after a cloud change, and expose the resultin
 ### Optional
 
 - `base_snapshot_id` (String) Snapshot to predict from. Defaults to the most recent *collected* snapshot, which is not always the most recent one: every prediction leaves a snapshot behind, and predicting from a prediction is refused.
+- `device_commands` (Map of String) CLI configuration to stage on classic network devices, by Forward device name: the router half of a hybrid change (configuration-mode lines, as the device's own CLI takes them). Staged on the same change set as the cloud change and the firewall rules, so one prediction covers every side. May stand alone.
 - `firewall_rules` (Attributes List) Security rules to stage on classic firewalls, in Forward's rule model: the on-prem half of a hybrid change. Staged on the same change set as the cloud change, so one prediction covers both sides. May stand alone. (see [below for nested schema](#nestedatt--firewall_rules))
 - `keep_change_set` (Boolean) Keep the change set when this resource is destroyed. Off by default, so a prediction does not leave change sets behind on every apply.
 - `network_id` (String) Network identifier. Defaults to the provider's network.

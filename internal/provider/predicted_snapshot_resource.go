@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -49,6 +51,7 @@ type PredictedSnapshotResourceModel struct {
 	TerraformPlanJSON   types.String        `tfsdk:"terraform_plan_json"`
 	RouteChanges        []RouteChangeModel  `tfsdk:"route_changes"`
 	FirewallRules       []FirewallRuleModel `tfsdk:"firewall_rules"`
+	DeviceCommands      types.Map           `tfsdk:"device_commands"`
 	Note                types.String        `tfsdk:"note"`
 	PollIntervalSeconds types.Int64         `tfsdk:"poll_interval_seconds"`
 	TimeoutSeconds      types.Int64         `tfsdk:"timeout_seconds"`
@@ -137,6 +140,15 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 					"which is not always the most recent one: every prediction leaves a snapshot behind, and " +
 					"predicting from a prediction is refused.",
 				PlanModifiers: replace,
+			},
+			"device_commands": schema.MapAttribute{
+				ElementType: types.StringType,
+				Optional:    true,
+				MarkdownDescription: "CLI configuration to stage on classic network devices, by Forward device " +
+					"name: the router half of a hybrid change (configuration-mode lines, as the device's own CLI " +
+					"takes them). Staged on the same change set as the cloud change and the firewall rules, so one " +
+					"prediction covers every side. May stand alone.",
+				PlanModifiers: []planmodifier.Map{mapplanmodifier.RequiresReplace()},
 			},
 			"firewall_rules": schema.ListNestedAttribute{
 				Optional: true,
@@ -290,6 +302,10 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 	plan := strings.TrimSpace(data.TerraformPlanJSON.ValueString())
 	firewallRules, diags := firewallRules(ctx, data.FirewallRules)
 	resp.Diagnostics.Append(diags...)
+	deviceCommands := map[string]string{}
+	if !data.DeviceCommands.IsNull() && !data.DeviceCommands.IsUnknown() {
+		resp.Diagnostics.Append(data.DeviceCommands.ElementsAs(ctx, &deviceCommands, false)...)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -298,9 +314,9 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 		resp.Diagnostics.AddError("Conflicting Change Sources",
 			"Set exactly one of terraform_plan_json or route_changes; stating both leaves it ambiguous which change was predicted.")
 		return
-	case plan == "" && len(data.RouteChanges) == 0 && len(firewallRules) == 0:
+	case plan == "" && len(data.RouteChanges) == 0 && len(firewallRules) == 0 && len(deviceCommands) == 0:
 		resp.Diagnostics.AddError("No Change Stated",
-			"Set one of terraform_plan_json, route_changes or firewall_rules. Predicting no change would return the base snapshot under a new id.")
+			"Set one of terraform_plan_json, route_changes, firewall_rules or device_commands. Predicting no change would return the base snapshot under a new id.")
 		return
 	}
 
@@ -386,6 +402,13 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 			return
 		}
 	}
+	// Device commands too: a device's draft is its configuration-mode lines, staged whole.
+	for _, device := range sortedKeys(deviceCommands) {
+		if _, err := client.Predict.StageCommands(ctx, networkID, string(changeSet.ID), device, deviceCommands[device]); err != nil {
+			fail("Device Commands Not Staged", fmt.Errorf("%s: %w", device, err))
+			return
+		}
+	}
 	data.ImportedObjects = listOfStrings(objects)
 	data.Unsupported = listOfStrings(unsupported)
 	staged, err := stagedChanges(ctx, client, networkID, string(changeSet.ID), source, objects)
@@ -405,7 +428,7 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 			fmt.Sprintf("Forward has no predictor for %s; the prediction does not include them.",
 				strings.Join(unsupported, ", ")))
 	}
-	if len(objects) == 0 && len(firewallRules) == 0 {
+	if len(objects) == 0 && len(firewallRules) == 0 && len(deviceCommands) == 0 {
 		fail("Nothing To Predict", fmt.Errorf("no resource in the plan maps onto a cloud object Forward can model"))
 		return
 	}
@@ -636,4 +659,13 @@ func firewallRules(ctx context.Context, models []FirewallRuleModel) ([]stagedFir
 		})
 	}
 	return out, diags
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
