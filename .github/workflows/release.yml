@@ -27,6 +27,15 @@ jobs:
         run: terraform fmt -check -recursive examples
       - name: Test
         run: go test ./...
+      # The registry's signing key. Its private half lives only in this
+      # repository's secrets; the public half is registered at
+      # registry.terraform.io under the forwardnetworks namespace.
+      - name: Import GPG key
+        id: gpg
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
@@ -35,3 +44,4 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.gpg.outputs.fingerprint }}

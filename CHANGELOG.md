@@ -1,7 +1,10 @@
-## Unreleased
+## 0.6.0 (September 18, 2026)
+
+FEATURES:
+- Cloud Predict: `forward_predicted_snapshot` predicts what a Terraform plan does to the network before it is applied, and `forward_snapshot` collects the estate afterwards to verify it. With `precondition`/`postcondition` on an intent check, an apply is gated on the prediction (see `examples/predict-gate`).
 
 BREAKING CHANGES:
-- `forward_predicted_snapshot` now stages changes through Forward's cloud-object change-set routes (Cloud Editing Framework). `cloud_changes_json` is gone; state a change directly with the new `route_changes` list (one entry per route: `route_table_id`, `destination`, optional `target` — omit it to remove the route) or keep passing `terraform_plan_json`.
+- `forward_predicted_snapshot` now stages changes through Forward's cloud-object change-set routes. `cloud_changes_json` is gone; state a change directly with the new `route_changes` list (one entry per route: `route_table_id`, `destination`, optional `target` — omit it to remove the route) or keep passing `terraform_plan_json`.
 - The provider now builds against the unified `forward-go-sdk` (the Skyforge line plus this provider's additions); `CloudAccountRequest` fields are plain values rather than pointers.
 
 IMPROVEMENTS:

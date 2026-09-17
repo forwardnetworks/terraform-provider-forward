@@ -40,9 +40,26 @@ checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
   algorithm: sha256
 
+# The Terraform Registry verifies every release against a GPG key registered
+# with the namespace: the checksum file must be detach-signed by it, and the
+# registry manifest must ship beside the archives under this exact name.
+signs:
+  - artifacts: checksum
+    args:
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+
 release:
   prerelease: auto
   draft: false
+  extra_files:
+    - glob: "terraform-registry-manifest.json"
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
 
 changelog:
   use: github
