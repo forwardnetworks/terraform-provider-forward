@@ -6,7 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.42.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.25
 	github.com/aws/aws-sdk-go-v2/service/organizations v1.51.10
-	github.com/forwardnetworks/forward-go-sdk v0.0.0-20260821185234-7059bccbc737
+	github.com/forwardnetworks/forward-go-sdk v0.2.0
 	github.com/hashicorp/terraform-plugin-framework v1.16.1
 	github.com/hashicorp/terraform-plugin-framework-validators v0.13.0
 	github.com/hashicorp/terraform-plugin-go v0.29.0
@@ -79,7 +79,3 @@ require (
 	google.golang.org/grpc v1.75.1 // indirect
 	google.golang.org/protobuf v1.36.9 // indirect
 )
-
-// The cloud-predict SDK additions live on Skyforge (skyforge/forward-go-sdk, branch cloud-predict-cef, 96203f1)
-// until they are merged and mirrored to GitHub, where this module path resolves; re-pin to that pseudo-version then.
-replace github.com/forwardnetworks/forward-go-sdk => ../forward-go-sdk
