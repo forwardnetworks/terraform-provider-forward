@@ -4,20 +4,10 @@ This repository contains the Terraform provider for [Forward Networks](https://w
 
 The provider currently supports Forward Basic authentication, snapshot and NQE workflows, intent checks, path analysis, and Terraform-native AWS cloud account onboarding from AWS Organizations.
 
-## Building against the Forward Go SDK
+## Building
 
-The provider depends on `github.com/forwardnetworks/forward-go-sdk`. While that module is hosted internally rather
-than on GitHub, Go needs to be told where to fetch it from. The module keeps its eventual public path, so this is
-two lines of local configuration rather than a `replace` directive or a rename that would have to be undone:
-
-```sh
-go env -w GOPRIVATE='github.com/forwardnetworks/*'
-git config --global \
-  url."https://gerrit.local.forwardnetworks.com/a/forward-go-sdk".insteadOf \
-  "https://github.com/forwardnetworks/forward-go-sdk"
-```
-
-Remove both once the SDK is published; nothing in this repository changes.
+The provider depends on the public [`forward-go-sdk`](https://github.com/forwardnetworks/forward-go-sdk) module; `go build`
+resolves it like any other dependency.
 
 ## Native IaC Workflow
 

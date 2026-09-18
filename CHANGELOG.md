@@ -5,7 +5,7 @@ FEATURES:
 
 BREAKING CHANGES:
 - `forward_predicted_snapshot` now stages changes through Forward's cloud-object change-set routes. `cloud_changes_json` is gone; state a change directly with the new `route_changes` list (one entry per route: `route_table_id`, `destination`, optional `target` — omit it to remove the route) or keep passing `terraform_plan_json`.
-- The provider now builds against the unified `forward-go-sdk` (the Skyforge line plus this provider's additions); `CloudAccountRequest` fields are plain values rather than pointers.
+- The provider now builds against the public `forward-go-sdk` module; `CloudAccountRequest` fields are plain values rather than pointers.
 
 IMPROVEMENTS:
 - `forward_predicted_snapshot` exposes `staged_changes_json`: each imported object's diff as Forward models it, for a page or report to render without a second client.
