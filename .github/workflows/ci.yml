@@ -22,6 +22,8 @@ jobs:
         run: terraform fmt -check -recursive examples
       - name: Vet
         run: go vet ./...
+      - name: Lint
+        run: make lint
       - name: Test
         run: go test ./...
       - name: Build

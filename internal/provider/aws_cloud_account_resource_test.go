@@ -31,11 +31,11 @@ func TestAccAWSCloudAccountResourceCreatesAndUpdates(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts/aws/assumeRole/externalId", testNetworkID):
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"externalId":"Org:55"}`)
+			_, _ = fmt.Fprint(w, `{"externalId":"Org:55"}`)
 		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts", testNetworkID):
 			w.Header().Set("Content-Type", "application/json")
 			if stored == nil {
-				fmt.Fprint(w, `[]`)
+				_, _ = fmt.Fprint(w, `[]`)
 				return
 			}
 			_ = json.NewEncoder(w).Encode([]any{cloudAccountResponse(*stored)})
@@ -169,7 +169,7 @@ func TestAccAWSCloudAccountResourceAdoptsExistingSetup(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts/aws/assumeRole/externalId", testNetworkID):
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"externalId":"Org:55"}`)
+			_, _ = fmt.Fprint(w, `{"externalId":"Org:55"}`)
 		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts", testNetworkID):
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode([]any{cloudAccountResponse(*stored)})
@@ -260,7 +260,7 @@ func TestAccAWSCloudAccountResourceBlocksAccountRemovalsByDefault(t *testing.T) 
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts/aws/assumeRole/externalId", testNetworkID):
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"externalId":"Org:55"}`)
+			_, _ = fmt.Fprint(w, `{"externalId":"Org:55"}`)
 		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts", testNetworkID):
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode([]any{cloudAccountResponse(*stored)})
@@ -315,7 +315,7 @@ func TestAccAWSCloudAccountResourceAllowsAccountRemovals(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts/aws/assumeRole/externalId", testNetworkID):
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"externalId":"Org:55"}`)
+			_, _ = fmt.Fprint(w, `{"externalId":"Org:55"}`)
 		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts", testNetworkID):
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode([]any{cloudAccountResponse(*stored)})
@@ -378,7 +378,7 @@ func TestAccAWSCloudAccountResourceStaticKeysUpdateCredential(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == fmt.Sprintf("/api/networks/%s/cloudAccounts", testNetworkID):
 			w.Header().Set("Content-Type", "application/json")
 			if stored == nil {
-				fmt.Fprint(w, `[]`)
+				_, _ = fmt.Fprint(w, `[]`)
 				return
 			}
 			_ = json.NewEncoder(w).Encode([]any{cloudAccountResponse(*stored)})

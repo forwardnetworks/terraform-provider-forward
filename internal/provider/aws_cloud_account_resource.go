@@ -830,17 +830,6 @@ func mapOfStrings(ctx context.Context, values map[string]string) types.Map {
 	return result
 }
 
-func stringPointer(value types.String) *string {
-	if value.IsNull() || value.IsUnknown() {
-		return nil
-	}
-	trimmed := strings.TrimSpace(value.ValueString())
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
-}
-
 func int64Pointer(value types.Int64) *int64 {
 	if value.IsNull() || value.IsUnknown() {
 		return nil

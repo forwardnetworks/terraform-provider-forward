@@ -9,3 +9,6 @@ dist/
 *.tfstate
 *.tfstate.*
 *.tfplan
+
+# golangci-lint, installed by make lint
+/bin/
