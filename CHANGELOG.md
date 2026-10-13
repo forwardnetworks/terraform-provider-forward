@@ -1,6 +1,7 @@
-## 0.7.0 (Unreleased)
+## 0.7.0 (October 13, 2026)
 
 FEATURES:
+- `forward_predicted_snapshot` takes `device_commands`: a map of Forward device name to the configuration-mode lines to stage on it, on the same change set as any `firewall_rules`, so a change touching routers and firewalls is one prediction.
 - New `forward_collector` resource registers a collector with Forward and returns its `token` (`username:password`, the Docker collector's `TOKEN`), so a collector deployment needs no Forward UI step. Forward shows the token only at registration: it is kept in state, survives refresh, and is null after an import. Destroying the resource deletes the collector in Forward. Tokens in Forward's newer (V3) format are decoded to the same `username:password` form, with the server they were issued for in `app_server_url`.
 
 BREAKING CHANGES:
