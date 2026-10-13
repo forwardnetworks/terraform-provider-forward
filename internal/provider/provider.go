@@ -221,6 +221,7 @@ func (p *ForwardProvider) Resources(ctx context.Context) []func() resource.Resou
 		NewNQELibraryQueryResource,
 		NewNetworkResource,
 		NewProxyResource,
+		NewCollectorResource,
 		NewCollectorAttachmentResource,
 		NewAzureCloudAccountResource,
 	}

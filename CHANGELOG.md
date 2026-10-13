@@ -1,3 +1,13 @@
+## 0.7.0 (October 13, 2026)
+
+FEATURES:
+- `forward_predicted_snapshot` takes `device_commands`: a map of Forward device name to the configuration-mode lines to stage on it, on the same change set as any `firewall_rules`, so a change touching routers and firewalls is one prediction.
+- New `forward_collector` resource registers a collector with Forward and returns its `token` (`username:password`, the Docker collector's `TOKEN`), so a collector deployment needs no Forward UI step. Forward shows the token only at registration: it is kept in state, survives refresh, and is null after an import. Destroying the resource deletes the collector in Forward. Tokens in Forward's newer (V3) format are decoded to the same `username:password` form, with the server they were issued for in `app_server_url`.
+
+BREAKING CHANGES:
+- Cloud Predict is removed from `forward_predicted_snapshot`: `source_name`, `terraform_plan_json`, `route_changes`, `imported_objects`, `unsupported_resources` and `staged_changes_json` are gone, with `examples/predict-gate` and `examples/full-lifecycle`. The cloud-object change-set routes they called do not exist on any released Forward build. Predictions now come from `device_commands` and `firewall_rules`; `examples/regression-gate` uses `device_commands`.
+- The provider builds against `forward-go-sdk` v0.4.12.
+
 ## 0.6.0 (September 18, 2026)
 
 FEATURES:
