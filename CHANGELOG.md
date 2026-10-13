@@ -17,7 +17,12 @@ BREAKING CHANGES:
 - Cloud Predict is removed from `forward_predicted_snapshot`: `source_name`, `terraform_plan_json`, `route_changes`, `imported_objects`, `unsupported_resources` and `staged_changes_json` are gone, with `examples/predict-gate` and `examples/full-lifecycle`. The cloud-object change-set routes they called do not exist on any released Forward build. Predictions now come from `device_commands` and `firewall_rules`; `examples/regression-gate` uses `device_commands`.
 - The provider builds against `forward-go-sdk` v0.4.12.
 
-## 0.6.0 (September 18, 2026)
+## 0.6.1 (September 17, 2026)
+
+IMPROVEMENTS:
+- `forward_predicted_snapshot` reads `staged_changes_json` from Forward's cloud-object diff routes (forward-go-sdk v0.2.1). Removed with the rest of Cloud Predict in 0.7.0.
+
+## 0.6.0 (September 17, 2026)
 
 FEATURES:
 - Cloud Predict: `forward_predicted_snapshot` predicts what a Terraform plan does to the network before it is applied, and `forward_snapshot` collects the estate afterwards to verify it. With `precondition`/`postcondition` on an intent check, an apply is gated on the prediction (see `examples/predict-gate`).
