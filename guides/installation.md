@@ -6,8 +6,11 @@ Terraform's local plugin directory, or use a local build.
 
 ## GitHub Release
 
-Once per machine (Linux or macOS). The checksum is checked before anything is
-installed:
+Once per machine (Linux or macOS). Nothing is installed unless the checksum
+matches (on systems without `shasum`, use `sha256sum -c -`). The
+[terraform-collector](https://github.com/forwardnetworks/terraform-collector)
+repository has the same steps as a script, `scripts/install-forward-provider.sh`,
+with options for CI and air-gapped hosts.
 
 ```sh
 VERSION=0.7.1
@@ -20,8 +23,8 @@ DIR=~/.terraform.d/plugins/registry.terraform.io/forwardnetworks/forward/$VERSIO
 cd "$(mktemp -d)"
 curl -fsSLO "$URL/$ZIP"
 curl -fsSLO "$URL/terraform-provider-forward_${VERSION}_SHA256SUMS"
-grep " $ZIP\$" terraform-provider-forward_${VERSION}_SHA256SUMS | shasum -a 256 -c -
-mkdir -p "$DIR" && unzip -o "$ZIP" -d "$DIR"
+grep " $ZIP\$" terraform-provider-forward_${VERSION}_SHA256SUMS | shasum -a 256 -c - &&
+  mkdir -p "$DIR" && unzip -o "$ZIP" -d "$DIR"
 ```
 
 On Windows, unzip `terraform-provider-forward_<version>_windows_amd64.zip` into

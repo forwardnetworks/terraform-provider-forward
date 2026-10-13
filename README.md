@@ -181,8 +181,15 @@ make testacc
 ## Available Resources
 
 - `forward_aws_cloud_account` — creates or patches a Forward AWS cloud account setup.
+- `forward_azure_cloud_account` — an Azure collection source: service principal, tenant and subscriptions.
+- `forward_collector` — registers a collector and returns the token it runs with.
+- `forward_collector_attachment` — attaches a registered collector to a network.
 - `forward_intent_check` — manages intent checks tied to a snapshot.
+- `forward_network` — a Forward network.
+- `forward_nqe_library_query` — publishes a query to the organization's NQE library.
 - `forward_nqe_query_definition` — references NQE library entries for intent and query metadata.
+- `forward_predicted_snapshot` — predicts the network after device CLI or firewall rule changes.
+- `forward_proxy` — a proxy server that collection goes through.
 - `forward_snapshot` — captures and tracks Forward Enterprise snapshots.
 
 ## Available Data Sources
@@ -199,6 +206,8 @@ make testacc
 
 - [AWS Organization Onboarding](examples/aws-organization-onboarding)
 - [Pre/Post Change Validation](examples/pre-post)
+- [Regression Gate](examples/regression-gate): refuse a device change that breaks a check passing today
+- Collector on AWS, end to end: [forwardnetworks/terraform-collector](https://github.com/forwardnetworks/terraform-collector) `examples/end-to-end`
 
 ## Workflow Guides
 
@@ -209,7 +218,6 @@ make testacc
 ## Release
 
 1. Update `CHANGELOG.md` with the new version notes.
-2. Run `goreleaser release --snapshot --skip-publish` to verify artifacts locally.
-3. Tag the release.
-4. Run `goreleaser release` with appropriate credentials to publish binaries and checksums.
-5. Publish the release to the Terraform Registry when registry distribution is ready.
+2. Run `goreleaser release --snapshot --clean --skip=sign` to verify artifacts locally.
+3. Tag the release on `main` (`git tag -a vX.Y.Z`) and push the tag. The `release` workflow tests, signs with the registry key held in the repository's secrets, publishes the GitHub release with its checksums, manifest and the key's public half.
+4. Once the provider is published on the Terraform Registry, the registry picks up each new release from the tag.
