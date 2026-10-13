@@ -74,18 +74,18 @@ func TestAccDataSourceVersionAndSnapshots(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/version":
-			fmt.Fprint(w, versionPayload)
+			_, _ = fmt.Fprint(w, versionPayload)
 		case fmt.Sprintf("/api/networks/%s/snapshots", testNetworkID):
-			fmt.Fprint(w, snapshotsPayload)
+			_, _ = fmt.Fprint(w, snapshotsPayload)
 		case fmt.Sprintf("/api/snapshots/%s/checks", testSnapshotID):
-			fmt.Fprint(w, checksPayload)
+			_, _ = fmt.Fprint(w, checksPayload)
 		case "/api/nqe":
 			if r.Method != http.MethodPost {
 				http.NotFound(w, r)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, nqePayload)
+			_, _ = fmt.Fprint(w, nqePayload)
 		default:
 			http.NotFound(w, r)
 		}
