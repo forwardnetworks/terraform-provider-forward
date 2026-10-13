@@ -11,24 +11,25 @@ provider "forward" {
   network_id = var.network_id
 }
 
-variable "cloud_source" { type = string }
-variable "route_table" { type = string }
-variable "destination" { type = string }
-variable "target_id" { type = string }
+variable "device" {
+  type        = string
+  description = "Forward device name the change is made on."
+}
+
+variable "commands" {
+  type        = string
+  description = "Configuration-mode lines, as the device's own CLI takes them."
+}
 
 # Predict the change against the collected baseline. The regression suite is
 # persistent, so Forward evaluates all nine checks on the predicted network.
 resource "forward_predicted_snapshot" "candidate" {
-  network_id  = var.network_id
-  source_name = var.cloud_source
-  note        = "gate demo"
+  network_id = var.network_id
+  note       = "gate demo"
 
-  route_changes = [{
-    route_table_id = var.route_table
-    destination    = var.destination
-    # Stating no target removes the route.
-    target = var.target_id == "" ? null : var.target_id
-  }]
+  device_commands = {
+    (var.device) = var.commands
+  }
 }
 
 # What the suite says about the network as it is today. A network is never
@@ -66,8 +67,9 @@ locals {
   ])
 }
 
+# Stands in for whatever pushes the change; it runs only past the gate.
 resource "terraform_data" "the_change" {
-  input      = var.destination
+  input      = var.commands
   depends_on = [data.forward_intent_checks.predicted]
 }
 

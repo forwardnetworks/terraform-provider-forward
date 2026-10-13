@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -25,7 +26,10 @@ import (
 	forward "github.com/forwardnetworks/forward-go-sdk"
 )
 
-var _ resource.Resource = &PredictedSnapshotResource{}
+var (
+	_ resource.Resource                   = &PredictedSnapshotResource{}
+	_ resource.ResourceWithValidateConfig = &PredictedSnapshotResource{}
+)
 
 // PredictedSnapshotResource produces a snapshot of the network as it would be
 // after a change, without making the change.
@@ -46,10 +50,7 @@ type PredictedSnapshotResource struct {
 type PredictedSnapshotResourceModel struct {
 	ID                  types.String        `tfsdk:"id"`
 	NetworkID           types.String        `tfsdk:"network_id"`
-	SourceName          types.String        `tfsdk:"source_name"`
 	BaseSnapshotID      types.String        `tfsdk:"base_snapshot_id"`
-	TerraformPlanJSON   types.String        `tfsdk:"terraform_plan_json"`
-	RouteChanges        []RouteChangeModel  `tfsdk:"route_changes"`
 	FirewallRules       []FirewallRuleModel `tfsdk:"firewall_rules"`
 	DeviceCommands      types.Map           `tfsdk:"device_commands"`
 	Note                types.String        `tfsdk:"note"`
@@ -59,18 +60,7 @@ type PredictedSnapshotResourceModel struct {
 
 	ChangeSetID     types.String `tfsdk:"change_set_id"`
 	State           types.String `tfsdk:"state"`
-	ImportedObjects types.List   `tfsdk:"imported_objects"`
-	Unsupported     types.List   `tfsdk:"unsupported_resources"`
-	StagedChanges   types.String `tfsdk:"staged_changes_json"`
 	FirewallChanges types.String `tfsdk:"firewall_changes_json"`
-}
-
-// StagedObject is one imported object's diff, as staged_changes_json carries it: the collected rows with the
-// change marked on each, in Forward's DiffEntry shape (a = collected, b = staged).
-type StagedObject struct {
-	Type   string                   `json:"type"`
-	Routes []forward.RouteDiffEntry `json:"routes,omitempty"`
-	Rules  []forward.RuleDiffEntry  `json:"rules,omitempty"`
 }
 
 // FirewallRuleModel is one security rule to stage on a classic firewall, in Forward's rule model: the on-prem
@@ -90,14 +80,6 @@ type FirewallRuleModel struct {
 	After              types.String `tfsdk:"after"`
 }
 
-// RouteChangeModel is one route stated directly: a target adds or retargets the
-// route at destination, no target removes it.
-type RouteChangeModel struct {
-	RouteTableID types.String `tfsdk:"route_table_id"`
-	Destination  types.String `tfsdk:"destination"`
-	Target       types.String `tfsdk:"target"`
-}
-
 func NewPredictedSnapshotResource() resource.Resource {
 	return &PredictedSnapshotResource{}
 }
@@ -113,8 +95,9 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 	replace := []planmodifier.String{stringplanmodifier.RequiresReplace()}
 
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Predict the network as it would be after a cloud change, and expose the resulting " +
-			"snapshot so snapshot-scoped data sources can be read against it.",
+		MarkdownDescription: "Predict the network as it would be after a change to classic devices (CLI " +
+			"configuration or firewall rules), and expose the resulting snapshot so snapshot-scoped data " +
+			"sources can be read against it.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -126,12 +109,6 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 				Computed:            true,
 				MarkdownDescription: "Network identifier. Defaults to the provider's network.",
 				PlanModifiers:       replace,
-			},
-			"source_name": schema.StringAttribute{
-				Required: true,
-				MarkdownDescription: "Cloud collection source the change applies to. This names a *source*, not a " +
-					"device: a cloud source models many devices, none of which is a device by the source's own name.",
-				PlanModifiers: replace,
 			},
 			"base_snapshot_id": schema.StringAttribute{
 				Optional: true,
@@ -145,16 +122,14 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 				ElementType: types.StringType,
 				Optional:    true,
 				MarkdownDescription: "CLI configuration to stage on classic network devices, by Forward device " +
-					"name: the router half of a hybrid change (configuration-mode lines, as the device's own CLI " +
-					"takes them). Staged on the same change set as the cloud change and the firewall rules, so one " +
-					"prediction covers every side. May stand alone.",
+					"name (configuration-mode lines, as the device's own CLI takes them). Staged on the same change " +
+					"set as any firewall_rules, so one prediction covers both.",
 				PlanModifiers: []planmodifier.Map{mapplanmodifier.RequiresReplace()},
 			},
 			"firewall_rules": schema.ListNestedAttribute{
 				Optional: true,
-				MarkdownDescription: "Security rules to stage on classic firewalls, in Forward's rule model: the " +
-					"on-prem half of a hybrid change. Staged on the same change set as the cloud change, so one " +
-					"prediction covers both sides. May stand alone.",
+				MarkdownDescription: "Security rules to stage on classic firewalls, in Forward's rule model. " +
+					"Staged on the same change set as any device_commands, so one prediction covers both.",
 				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplace()},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
@@ -172,37 +147,6 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 							MarkdownDescription: "Id of the existing rule this one follows; unset puts it at the top."},
 						"after": schema.StringAttribute{Optional: true,
 							MarkdownDescription: "Name of the existing rule this one follows, resolved to its id on the device; an alternative to `predecessor`."},
-					},
-				},
-			},
-			"terraform_plan_json": schema.StringAttribute{
-				Optional: true,
-				MarkdownDescription: "Output of `terraform show -json`. Forward translates the plan into " +
-					"cloud-object changes on the source's route tables and security groups and reports, in " +
-					"`unsupported_resources`, what it could not translate. Conflicts with `route_changes`.",
-				PlanModifiers: replace,
-			},
-			"route_changes": schema.ListNestedAttribute{
-				Optional: true,
-				MarkdownDescription: "Route changes stated directly, one per route: a `target` adds or retargets " +
-					"the route at `destination` in `route_table_id`; no `target` removes it. Conflicts with " +
-					"`terraform_plan_json`.",
-				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplace()},
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"route_table_id": schema.StringAttribute{
-							Required:            true,
-							MarkdownDescription: "Route table the route lives in (e.g. `rtb-…`).",
-						},
-						"destination": schema.StringAttribute{
-							Required:            true,
-							MarkdownDescription: "Destination prefix, which names the route within its table.",
-						},
-						"target": schema.StringAttribute{
-							Optional: true,
-							MarkdownDescription: "Where the route points, as Forward's route table shows it " +
-								"(a gateway, NAT, TGW, peering or interface id). Omit to remove the route.",
-						},
 					},
 				},
 			},
@@ -240,27 +184,6 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 				Computed:            true,
 				MarkdownDescription: "Processing state of the predicted snapshot.",
 			},
-			"imported_objects": schema.ListAttribute{
-				ElementType:         types.StringType,
-				Computed:            true,
-				MarkdownDescription: "Cloud objects (route table and security group ids) the plan staged changes on.",
-				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
-			},
-			"unsupported_resources": schema.ListAttribute{
-				ElementType: types.StringType,
-				Computed:    true,
-				MarkdownDescription: "Resource addresses in the plan that Forward has no predictor for. They are " +
-					"not in the prediction; a plan made only of these is refused rather than predicted as no change.",
-				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
-			},
-			"staged_changes_json": schema.StringAttribute{
-				Computed: true,
-				MarkdownDescription: "What was staged on each imported object, as Forward models it: a JSON object " +
-					"keyed by object id, each `{type, routes|rules}` with the collected rows marked UNCHANGED, " +
-					"ADDED, MODIFIED or DELETED (`a` collected, `b` staged). For a page or a report; " +
-					"`jsondecode()` it.",
-				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
-			},
 			"firewall_changes_json": schema.StringAttribute{
 				Computed: true,
 				MarkdownDescription: "JSON object of device name to the rulebase diff rows the change set alters " +
@@ -268,6 +191,22 @@ func (r *PredictedSnapshotResource) Schema(ctx context.Context, req resource.Sch
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 		},
+	}
+}
+
+// ValidateConfig refuses a prediction of nothing at plan time rather than
+// mid-apply. Unknown values pass: they may well hold a change.
+func (r *PredictedSnapshotResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var commands types.Map
+	var rules types.List
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("device_commands"), &commands)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("firewall_rules"), &rules)...)
+	if resp.Diagnostics.HasError() || commands.IsUnknown() || rules.IsUnknown() {
+		return
+	}
+	if len(commands.Elements()) == 0 && len(rules.Elements()) == 0 {
+		resp.Diagnostics.AddError("No Change Stated",
+			"Set device_commands or firewall_rules. Predicting no change would return the base snapshot under a new id.")
 	}
 }
 
@@ -299,7 +238,6 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 	}
 	client := r.providerData.Client
 
-	plan := strings.TrimSpace(data.TerraformPlanJSON.ValueString())
 	firewallRules, diags := firewallRules(ctx, data.FirewallRules)
 	resp.Diagnostics.Append(diags...)
 	deviceCommands := map[string]string{}
@@ -309,14 +247,9 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	switch {
-	case plan != "" && len(data.RouteChanges) != 0:
-		resp.Diagnostics.AddError("Conflicting Change Sources",
-			"Set exactly one of terraform_plan_json or route_changes; stating both leaves it ambiguous which change was predicted.")
-		return
-	case plan == "" && len(data.RouteChanges) == 0 && len(firewallRules) == 0 && len(deviceCommands) == 0:
+	if len(firewallRules) == 0 && len(deviceCommands) == 0 {
 		resp.Diagnostics.AddError("No Change Stated",
-			"Set one of terraform_plan_json, route_changes, firewall_rules or device_commands. Predicting no change would return the base snapshot under a new id.")
+			"Set device_commands or firewall_rules. Predicting no change would return the base snapshot under a new id.")
 		return
 	}
 
@@ -366,27 +299,7 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 		resp.Diagnostics.AddError(summary, err.Error())
 	}
 
-	source := data.SourceName.ValueString()
-	var objects, unsupported []string
-	if plan != "" {
-		imported, _, err := client.Predict.ImportTerraformPlan(ctx, networkID, string(changeSet.ID), source, []byte(plan))
-		if err != nil {
-			fail("Change Not Staged", err)
-			return
-		}
-		for _, object := range imported.Applied {
-			objects = append(objects, object.ObjectID)
-		}
-		unsupported = imported.Unsupported
-	} else if len(data.RouteChanges) != 0 {
-		objects, err = stageRouteChanges(ctx, client, networkID, string(changeSet.ID), source, data.RouteChanges)
-		if err != nil {
-			fail("Change Not Staged", err)
-			return
-		}
-	}
-	// Firewall rules are staged beside the cloud change, on the same change set: a hybrid change is one
-	// prediction, not one per side.
+	// Firewall rules and device commands share the change set: one change is one prediction.
 	for _, staged := range firewallRules {
 		if staged.after != "" {
 			id, err := ruleIDByName(ctx, client, networkID, string(changeSet.ID), staged.device, staged.after)
@@ -409,29 +322,12 @@ func (r *PredictedSnapshotResource) Create(ctx context.Context, req resource.Cre
 			return
 		}
 	}
-	data.ImportedObjects = listOfStrings(objects)
-	data.Unsupported = listOfStrings(unsupported)
-	staged, err := stagedChanges(ctx, client, networkID, string(changeSet.ID), source, objects)
-	if err != nil {
-		fail("Staged Changes Not Read", err)
-		return
-	}
-	data.StagedChanges = types.StringValue(staged)
 	firewallChanges, err := firewallChanges(ctx, client, networkID, string(changeSet.ID), firewallRules)
 	if err != nil {
 		fail("Firewall Changes Not Read", err)
 		return
 	}
 	data.FirewallChanges = types.StringValue(firewallChanges)
-	if len(unsupported) != 0 {
-		resp.Diagnostics.AddWarning("Plan Partly Modelled",
-			fmt.Sprintf("Forward has no predictor for %s; the prediction does not include them.",
-				strings.Join(unsupported, ", ")))
-	}
-	if len(objects) == 0 && len(firewallRules) == 0 && len(deviceCommands) == 0 {
-		fail("Nothing To Predict", fmt.Errorf("no resource in the plan maps onto a cloud object Forward can model"))
-		return
-	}
 	if _, err := client.Predict.Commit(ctx, networkID, string(changeSet.ID), note); err != nil {
 		fail("Change Set Not Committed", err)
 		return
@@ -512,63 +408,8 @@ func (r *PredictedSnapshotResource) Delete(ctx context.Context, req resource.Del
 	}
 }
 
-// stagedChanges reads each imported object's diff and encodes them as staged_changes_json. An object's kind is
-// read off its id, which is how AWS names them: sg- for a security group, anything else a route table.
-func stagedChanges(ctx context.Context, client *forward.Client, networkID, changeSetID, source string,
-	objects []string) (string, error) {
-	staged := map[string]StagedObject{}
-	for _, object := range objects {
-		if strings.HasPrefix(object, "sg-") {
-			diff, _, err := client.Predict.SecurityGroupDiff(ctx, networkID, changeSetID, source, object)
-			if err != nil {
-				return "", fmt.Errorf("%s: %w", object, err)
-			}
-			staged[object] = StagedObject{Type: forward.CloudObjectSecurityGroup, Rules: diff.Entries}
-			continue
-		}
-		diff, _, err := client.Predict.RouteTableDiff(ctx, networkID, changeSetID, source, object)
-		if err != nil {
-			return "", fmt.Errorf("%s: %w", object, err)
-		}
-		staged[object] = StagedObject{Type: forward.CloudObjectRouteTable, Routes: diff.Entries}
-	}
-	encoded, err := json.Marshal(staged)
-	if err != nil {
-		return "", err
-	}
-	return string(encoded), nil
-}
-
-// stageRouteChanges puts each stated route on the draft and returns the route
-// tables touched, in the order first seen.
-func stageRouteChanges(ctx context.Context, client *forward.Client, networkID, changeSetID, source string,
-	changes []RouteChangeModel) ([]string, error) {
-	var tables []string
-	seen := map[string]bool{}
-	for _, change := range changes {
-		table := strings.TrimSpace(change.RouteTableID.ValueString())
-		destination := strings.TrimSpace(change.Destination.ValueString())
-		target := strings.TrimSpace(change.Target.ValueString())
-		var err error
-		if target == "" {
-			_, err = client.Predict.RemoveRoute(ctx, networkID, changeSetID, source, table, destination)
-		} else {
-			_, err = client.Predict.AddRoute(ctx, networkID, changeSetID, source, table,
-				forward.CloudRoute{Destination: destination, Target: target, Status: "active", Propagated: "no", Origin: ""})
-		}
-		if err != nil {
-			return nil, fmt.Errorf("%s %s: %w", table, destination, err)
-		}
-		if !seen[table] {
-			seen[table] = true
-			tables = append(tables, table)
-		}
-	}
-	return tables, nil
-}
-
 // firewallChanges reads each staged device's rulebase diff and keeps the rows the change set alters, as JSON
-// keyed by device: what the page shows beside the cloud objects' diffs.
+// keyed by device.
 func firewallChanges(ctx context.Context, client *forward.Client, networkID, changeSetID string, staged []stagedFirewallRule) (string, error) {
 	changes := map[string][]forward.SecurityRuleDiffEntry{}
 	for _, rule := range staged {

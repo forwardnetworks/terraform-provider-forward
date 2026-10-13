@@ -5,9 +5,8 @@ be, and refuse to apply if the change breaks something that works today.
 
 ```sh
 terraform apply \
-  -var network_id=... -var cloud_source=... \
-  -var route_table=rtb-... -var destination=10.92.0.0/16 \
-  -var target_id=tgw-...
+  -var network_id=... -var device=edge-rtr-1 \
+  -var commands=$'router bgp 65001\n no neighbor 10.0.0.2'
 ```
 
 ## It is a postcondition, not a check block
@@ -29,22 +28,11 @@ forever, including the ones that fix things.
 
 ## One apply, not a pipeline
 
-Collect, predict, gate, change, collect again, verify: it is one
-`terraform apply`. Terraform orders it from the dependency graph, and the data
-sources read at apply time because their snapshot ids are unknown at plan time.
+Predict, gate, change: it is one `terraform apply`. Terraform orders it from
+the dependency graph, and the data sources read at apply time because their
+snapshot ids are unknown at plan time. `terraform_data.the_change` stands in
+for whatever pushes the configuration; it is created only past the gate.
 
-Two things are worth knowing:
-
-- **The gate fires mid-apply.** `terraform plan` cannot run it, because the
-  predicted snapshot does not exist yet. A blocked run still leaves the change
-  set and predicted snapshot behind — that is the evidence of *why* it was
-  blocked.
-- **A verify gate after the change cannot roll back.** By the time it runs, the
-  change is applied. It fails the run loudly and gates whatever comes next.
-
-## Predicting the real plan file
-
-This example restates the change as `route_changes`, which keeps it to one
-command. To predict the actual `terraform plan` output instead, use
-`terraform_plan_json` — see `examples/predict-gate`. That needs two commands,
-unavoidably: a plan cannot contain a prediction of itself.
+**The gate fires mid-apply.** `terraform plan` cannot run it, because the
+predicted snapshot does not exist yet. A blocked run still leaves the predicted
+snapshot behind — that is the evidence of *why* it was blocked.
