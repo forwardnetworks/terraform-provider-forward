@@ -45,3 +45,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ steps.gpg.outputs.fingerprint }}
+      # The public half, for the registry's Signing Keys page and for anyone
+      # verifying SHA256SUMS.sig by hand.
+      - name: Attach the signing key's public half
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          gpg --armor --export "${GPG_FINGERPRINT}" > terraform-provider-forward_signing_key.asc
+          grep -q 'BEGIN PGP PUBLIC KEY BLOCK' terraform-provider-forward_signing_key.asc
+          gh release upload "${GITHUB_REF_NAME}" terraform-provider-forward_signing_key.asc --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.gpg.outputs.fingerprint }}

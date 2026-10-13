@@ -16,7 +16,8 @@ dist: dist
 builds:
   - id: provider
     main: .
-    binary: terraform-provider-forward
+    # The registry requires terraform-provider-{NAME}_v{VERSION} in each zip.
+    binary: "{{ .ProjectName }}_v{{ .Version }}"
     ldflags:
       - -s -w -X main.version={{.Version}}
     flags:
@@ -39,6 +40,10 @@ archives:
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
   algorithm: sha256
+  # The registry requires the manifest's checksum beside the zips'.
+  extra_files:
+    - glob: "terraform-registry-manifest.json"
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
 
 # The Terraform Registry verifies every release against a GPG key registered
 # with the namespace: the checksum file must be detach-signed by it, and the

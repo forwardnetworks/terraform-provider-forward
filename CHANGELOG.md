@@ -1,3 +1,12 @@
+## 0.7.1 (October 13, 2026)
+
+BUG FIXES:
+- Release archives now meet the Terraform Registry's requirements: each zip holds `terraform-provider-forward_v{VERSION}`, and `SHA256SUMS` covers the manifest. No provider code changed.
+
+IMPROVEMENTS:
+- Each release carries the public half of its signing key (`terraform-provider-forward_signing_key.asc`).
+- `guides/installation.md` installs the current release, with a checksum check.
+
 ## 0.7.0 (October 13, 2026)
 
 FEATURES:
