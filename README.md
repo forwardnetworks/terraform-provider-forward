@@ -171,12 +171,14 @@ See [guides/installation.md](guides/installation.md) for local build and GitHub 
 ## Developing the Provider
 
 ```shell
-go test ./...
+make lint
 make generate
 make testacc
 ```
 
-`make generate` refreshes provider docs from schema and examples. `make testacc` runs acceptance tests and may call live services depending on the test.
+`make lint` runs golangci-lint v2.14.0 with every finding shown; CI runs the same target on each pull request and push to `main`, and fails on any finding. The first run downloads the prebuilt linter into `bin/` (gitignored), so it does not depend on your Go version.
+
+`make generate` refreshes provider docs from schema and examples. `make testacc` runs acceptance tests and may call live services depending on the test. Plain `go test ./...` skips every resource test unless `TF_ACC=1` is set.
 
 ## Available Resources
 
